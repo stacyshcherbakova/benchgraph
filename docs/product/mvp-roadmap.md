@@ -10,6 +10,33 @@ Build a local-first macOS desktop app for bench scientists who need a fast path 
 
 Do not clone every GraphPad Prism feature. Build the smallest credible workflow that makes a Mac-heavy lab choose it for routine analyses.
 
+## Implementation Status
+
+As of the current build, a Swift implementation exists: a tested engine
+(`BenchGraphKit`), a `benchgraph` CLI, and a SwiftUI app (`BenchGraph.app`).
+The analysis engine is verified by 39 tests against independent SciPy references.
+
+| MVP area | Status |
+| --- | --- |
+| Native macOS app (SwiftUI window) | Done |
+| Paste + CSV/TSV import, parsed preview | Done |
+| Column / XY templates | Done (grouped: parsed, not first-class) |
+| Descriptive stats, t tests (paired/unpaired, Student/Welch) | Done |
+| One-way ANOVA + post-hoc (Bonferroni, Holm) | Done |
+| Mann-Whitney, Wilcoxon signed-rank | Done |
+| Pearson / Spearman, linear regression | Done |
+| 4PL dose-response + standard-curve interpolation | Done |
+| Normality test (D'Agostino-Pearson) | Done |
+| Graphs: scatter, bar+error, XY, dose-response curve | Done |
+| Export: SVG, PDF, PNG, TIFF | Done |
+| Project file (`.benchgraph`, versioned JSON, save/open) | Done |
+| Live provenance (assumptions, warnings, excluded, formula) | Done |
+| XLSX import | Not started |
+| Box / violin plots, journal theme presets | Not started |
+| Significance annotations on graphs, multi-panel layout | Not started |
+| Selectable error bars (SD/SEM/CI), export manifest | Partial / not started |
+| Signed + notarized DMG | Not started (needs Apple Developer ID) |
+
 ## MVP
 
 ### Goal

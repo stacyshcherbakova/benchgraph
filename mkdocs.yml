@@ -1,0 +1,39 @@
+site_name: BenchGraph Docs
+site_description: Research and product planning for a Mac-native, Prism-like scientific analysis and figure app.
+docs_dir: docs
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - toc.follow
+  palette:
+    - scheme: default
+      primary: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+markdown_extensions:
+  - admonition
+  - tables
+  - toc:
+      permalink: true
+  - footnotes
+  - attr_list
+
+nav:
+  - Home: README.md
+  - Project spec: project-spec.md
+  - Research:
+      - Market research: research/market-research.md
+      - Prism analysis templates: research/prism-analysis-templates.md
+  - Product:
+      - MVP and roadmap: product/mvp-roadmap.md

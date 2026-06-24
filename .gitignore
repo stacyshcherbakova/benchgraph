@@ -1,0 +1,13 @@
+# MkDocs build output
+/site/
+
+# Swift Package Manager
+/.build/
+.swiftpm/
+*.xcodeproj
+
+# Generated example figures
+/examples/*.svg
+
+# Built app bundle
+/BenchGraph.app/
