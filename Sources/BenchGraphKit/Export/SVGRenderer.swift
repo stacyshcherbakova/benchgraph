@@ -34,6 +34,8 @@ public struct SVGRenderer {
     public let width: Double
     public let height: Double
     private let margin = (top: 30.0, right: 30.0, bottom: 55.0, left: 70.0)
+    /// Vertical spacing between stacked significance brackets, in points.
+    private let bracketStep = 16.0
 
     public init(width: Double = 520, height: Double = 380) {
         self.width = width
@@ -89,12 +91,18 @@ public struct SVGRenderer {
     public func barChart(
         title: String,
         yLabel: String,
-        groups: [BarGroup]
+        groups: [BarGroup],
+        brackets: [BarBracket] = []
     ) -> String {
         guard !groups.isEmpty else { return emptyDocument(title: title) }
         let maxValue = groups.map { $0.value + $0.error }.max() ?? 1
         let yMax = maxValue > 0 ? maxValue * 1.1 : 1
-        let yScale = Scale(domainMin: 0, domainMax: yMax, rangeMin: margin.top + plotHeight, rangeMax: margin.top)
+        // Reserve a band at the top of the plot for significance brackets so
+        // they never collide with the tallest bar.
+        let laid = BracketLayout.assignLevels(brackets)
+        let levelCount = (laid.map(\.level).max() ?? -1) + 1
+        let band = laid.isEmpty ? 0 : Double(levelCount) * bracketStep + 14
+        let yScale = Scale(domainMin: 0, domainMax: yMax, rangeMin: margin.top + plotHeight, rangeMax: margin.top + band)
 
         var body = title.isEmpty ? "" : titleElement(title)
         body += yAxis(label: yLabel, scale: yScale)
@@ -117,6 +125,22 @@ public struct SVGRenderer {
             }
             // Category label.
             body += "  <text x=\"\(fmt(cx))\" y=\"\(fmt(margin.top + plotHeight + 18))\" font-size=\"12\" text-anchor=\"middle\" fill=\"#333\">\(escape(g.label))</text>\n"
+        }
+
+        // Significance brackets above the bars (smaller y is higher here).
+        for b in laid where groups.indices.contains(b.lo) && groups.indices.contains(b.hi) {
+            let cxA = margin.left + slot * (Double(b.fromIndex) + 0.5)
+            let cxB = margin.left + slot * (Double(b.toIndex) + 0.5)
+            let topA = yScale.map(groups[b.fromIndex].value + groups[b.fromIndex].error)
+            let topB = yScale.map(groups[b.toIndex].value + groups[b.toIndex].error)
+            let y = Swift.min(topA, topB) - 10 - Double(b.level) * bracketStep
+            let drop = 5.0
+            body += "  <line x1=\"\(fmt(cxA))\" y1=\"\(fmt(y))\" x2=\"\(fmt(cxB))\" y2=\"\(fmt(y))\" stroke=\"#333\" stroke-width=\"1\"/>\n"
+            body += "  <line x1=\"\(fmt(cxA))\" y1=\"\(fmt(y))\" x2=\"\(fmt(cxA))\" y2=\"\(fmt(y + drop))\" stroke=\"#333\" stroke-width=\"1\"/>\n"
+            body += "  <line x1=\"\(fmt(cxB))\" y1=\"\(fmt(y))\" x2=\"\(fmt(cxB))\" y2=\"\(fmt(y + drop))\" stroke=\"#333\" stroke-width=\"1\"/>\n"
+            if !b.label.isEmpty {
+                body += "  <text x=\"\(fmt((cxA + cxB) / 2))\" y=\"\(fmt(y - 3))\" font-size=\"13\" text-anchor=\"middle\" fill=\"#222\">\(escape(b.label))</text>\n"
+            }
         }
         return document(body)
     }

@@ -7,7 +7,7 @@ import Foundation
 public enum FigureExport {
 
     public enum Request {
-        case bars(title: String, yLabel: String, groups: [SVGRenderer.BarGroup])
+        case bars(title: String, yLabel: String, groups: [SVGRenderer.BarGroup], brackets: [BarBracket])
         case scatter(title: String, xLabel: String, yLabel: String,
                      series: [SVGRenderer.Series], curve: [(x: Double, y: Double)]?, logX: Bool)
     }
@@ -23,8 +23,8 @@ public enum FigureExport {
         case "svg":
             let svg: String
             switch request {
-            case let .bars(title, yLabel, groups):
-                svg = SVGRenderer().barChart(title: title, yLabel: yLabel, groups: groups)
+            case let .bars(title, yLabel, groups, brackets):
+                svg = SVGRenderer().barChart(title: title, yLabel: yLabel, groups: groups, brackets: brackets)
             case let .scatter(title, xLabel, yLabel, series, curve, logX):
                 svg = SVGRenderer().scatter(title: title, xLabel: xLabel, yLabel: yLabel,
                                             series: series, curve: curve, logX: logX)
@@ -33,8 +33,8 @@ public enum FigureExport {
         case "pdf", "png", "tiff":
             let fmt: CGChartRenderer.Format = ext == "pdf" ? .pdf : (ext == "png" ? .png : .tiff)
             switch request {
-            case let .bars(title, yLabel, groups):
-                return CGChartRenderer().barChart(format: fmt, title: title, yLabel: yLabel, groups: groups)
+            case let .bars(title, yLabel, groups, brackets):
+                return CGChartRenderer().barChart(format: fmt, title: title, yLabel: yLabel, groups: groups, brackets: brackets)
             case let .scatter(title, xLabel, yLabel, series, curve, logX):
                 return CGChartRenderer().scatter(format: fmt, title: title, xLabel: xLabel, yLabel: yLabel,
                                                  series: series, curve: curve, logX: logX)

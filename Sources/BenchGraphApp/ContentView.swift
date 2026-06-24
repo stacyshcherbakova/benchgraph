@@ -56,6 +56,20 @@ struct ContentView: View {
             Text(model.analysis.hint)
                 .font(.caption).foregroundColor(.secondary)
 
+            if model.isBarChart {
+                HStack(spacing: 12) {
+                    Picker("Error bars", selection: $model.errorBar) {
+                        ForEach(ErrorBarKind.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .fixedSize()
+                    Spacer()
+                    Toggle("Significance", isOn: $model.showSignificance)
+                        .toggleStyle(.checkbox)
+                }
+                .controlSize(.small)
+            }
+
             Text("Paste CSV / TSV (from Excel or Numbers)")
                 .font(.caption).foregroundColor(.secondary)
             TextEditor(text: $model.rawText)

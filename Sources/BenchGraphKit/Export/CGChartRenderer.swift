@@ -25,6 +25,8 @@ public struct CGChartRenderer {
     public let width: CGFloat
     public let height: CGFloat
     private let margin = (top: 30.0, right: 30.0, bottom: 55.0, left: 70.0)
+    /// Vertical spacing between stacked significance brackets, in points.
+    private let bracketStep: CGFloat = 16
     private let dataColor = CGColor(red: 0.173, green: 0.435, blue: 0.733, alpha: 1)
     private let curveColor = CGColor(red: 0.82, green: 0.286, blue: 0.357, alpha: 1)
     private let axisColor = CGColor(gray: 0.2, alpha: 1)
@@ -58,10 +60,11 @@ public struct CGChartRenderer {
     public func barChart(
         format: Format,
         title: String, yLabel: String,
-        groups: [SVGRenderer.BarGroup]
+        groups: [SVGRenderer.BarGroup],
+        brackets: [BarBracket] = []
     ) -> Data? {
         render(format: format) { ctx in
-            drawBars(ctx, title: title, yLabel: yLabel, groups: groups)
+            drawBars(ctx, title: title, yLabel: yLabel, groups: groups, brackets: brackets)
         }
     }
 
@@ -171,11 +174,17 @@ public struct CGChartRenderer {
 
     // MARK: - Bars
 
-    private func drawBars(_ ctx: CGContext, title: String, yLabel: String, groups: [SVGRenderer.BarGroup]) {
+    private func drawBars(_ ctx: CGContext, title: String, yLabel: String,
+                          groups: [SVGRenderer.BarGroup], brackets: [BarBracket]) {
         guard !groups.isEmpty else { return }
         let maxValue = groups.map { $0.value + $0.error }.max() ?? 1
         let yr = niceRange(0, maxValue > 0 ? maxValue : 1)
-        func py(_ y: Double) -> CGFloat { plot.minY + CGFloat((y - yr.lo) / (yr.hi - yr.lo)) * plot.height }
+        // Reserve a pixel band at the top for significance brackets (y grows up).
+        let laid = BracketLayout.assignLevels(brackets)
+        let levelCount = (laid.map(\.level).max() ?? -1) + 1
+        let band = laid.isEmpty ? 0 : CGFloat(levelCount) * bracketStep + 14
+        let usableHeight = plot.height - band
+        func py(_ y: Double) -> CGFloat { plot.minY + CGFloat((y - yr.lo) / (yr.hi - yr.lo)) * usableHeight }
 
         drawTitle(ctx, title)
         stroke(ctx, from: CGPoint(x: plot.minX, y: plot.minY), to: CGPoint(x: plot.maxX, y: plot.minY))
@@ -196,6 +205,24 @@ public struct CGChartRenderer {
                 stroke(ctx, from: CGPoint(x: cx - 6, y: py(g.value + g.error)), to: CGPoint(x: cx + 6, y: py(g.value + g.error)))
             }
             drawText(ctx, g.label, at: CGPoint(x: cx, y: plot.minY - 16), size: 11, align: .center)
+        }
+
+        // Significance brackets (larger y is higher on the page).
+        ctx.setStrokeColor(axisColor)
+        ctx.setLineWidth(1)
+        for b in laid where groups.indices.contains(b.lo) && groups.indices.contains(b.hi) {
+            let cxA = plot.minX + slot * (CGFloat(b.fromIndex) + 0.5)
+            let cxB = plot.minX + slot * (CGFloat(b.toIndex) + 0.5)
+            let barTop = max(py(groups[b.fromIndex].value + groups[b.fromIndex].error),
+                             py(groups[b.toIndex].value + groups[b.toIndex].error))
+            let y = barTop + 10 + CGFloat(b.level) * bracketStep
+            let drop: CGFloat = 5
+            stroke(ctx, from: CGPoint(x: cxA, y: y), to: CGPoint(x: cxB, y: y))
+            stroke(ctx, from: CGPoint(x: cxA, y: y), to: CGPoint(x: cxA, y: y - drop))
+            stroke(ctx, from: CGPoint(x: cxB, y: y), to: CGPoint(x: cxB, y: y - drop))
+            if !b.label.isEmpty {
+                drawText(ctx, b.label, at: CGPoint(x: (cxA + cxB) / 2, y: y + 3), size: 12, align: .center)
+            }
         }
     }
 

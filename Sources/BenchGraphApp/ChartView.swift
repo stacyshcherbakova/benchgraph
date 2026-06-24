@@ -1,14 +1,17 @@
 import SwiftUI
+import BenchGraphKit
 
 /// A native SwiftUI chart that draws the current `ChartSpec` (scatter with an
-/// optional fitted curve, or bars with error bars). This mirrors what the SVG
-/// exporter produces, but renders live in the window.
+/// optional fitted curve, or bars with error bars and significance brackets).
+/// This mirrors what the SVG exporter produces, but renders live in the window.
 struct ChartView: View {
     let spec: ChartSpec
 
     private let inset = EdgeInsets(top: 16, leading: 52, bottom: 40, trailing: 16)
     private let dataColor = Color(red: 0.17, green: 0.43, blue: 0.73)
     private let curveColor = Color(red: 0.82, green: 0.29, blue: 0.36)
+    /// Vertical spacing between stacked significance brackets.
+    private let bracketStep: CGFloat = 16
 
     var body: some View {
         GeometryReader { geo in
@@ -26,8 +29,8 @@ struct ChartView: View {
                     case let .scatter(points, curve, logX, xLabel, yLabel):
                         drawScatter(context, plot: plot, points: points, curve: curve,
                                     logX: logX, xLabel: xLabel, yLabel: yLabel)
-                    case let .bars(groups, yLabel):
-                        drawBars(context, plot: plot, groups: groups, yLabel: yLabel)
+                    case let .bars(groups, yLabel, brackets):
+                        drawBars(context, plot: plot, groups: groups, yLabel: yLabel, brackets: brackets)
                     }
                 }
             }
@@ -81,16 +84,22 @@ struct ChartView: View {
     // MARK: - Bars
 
     private func drawBars(_ context: GraphicsContext, plot: CGRect,
-                          groups: [ChartSpec.Bar], yLabel: String) {
+                          groups: [ChartSpec.Bar], yLabel: String, brackets: [BarBracket]) {
         guard !groups.isEmpty else { drawPlaceholder(context, plot: plot); return }
         let maxValue = groups.map { $0.value + $0.error }.max() ?? 1
         let yRange = niceRange(0, maxValue > 0 ? maxValue : 1)
 
+        // Reserve a band at the top for significance brackets (smaller y is higher).
+        let laid = BracketLayout.assignLevels(brackets)
+        let levelCount = (laid.map(\.level).max() ?? -1) + 1
+        let band: CGFloat = laid.isEmpty ? 0 : CGFloat(levelCount) * bracketStep + 14
+        let usableHeight = plot.height - band
+
         func py(_ y: Double) -> CGFloat {
-            plot.maxY - CGFloat((y - yRange.lo) / (yRange.hi - yRange.lo)) * plot.height
+            plot.maxY - CGFloat((y - yRange.lo) / (yRange.hi - yRange.lo)) * usableHeight
         }
 
-        drawYAxis(context, plot: plot, yRange: yRange, yLabel: yLabel)
+        drawYAxis(context, plot: plot, yRange: yRange, yLabel: yLabel, height: usableHeight)
         // Baseline.
         var axis = Path()
         axis.move(to: CGPoint(x: plot.minX, y: plot.maxY))
@@ -118,6 +127,28 @@ struct ChartView: View {
                 Text(g.label).font(.system(size: 11)).foregroundColor(.secondary),
                 at: CGPoint(x: cx, y: plot.maxY + 14)
             )
+        }
+
+        // Significance brackets (smaller y is higher).
+        for b in laid where groups.indices.contains(b.lo) && groups.indices.contains(b.hi) {
+            let cxA = plot.minX + slot * (CGFloat(b.fromIndex) + 0.5)
+            let cxB = plot.minX + slot * (CGFloat(b.toIndex) + 0.5)
+            let barTop = min(py(groups[b.fromIndex].value + groups[b.fromIndex].error),
+                             py(groups[b.toIndex].value + groups[b.toIndex].error))
+            let y = barTop - 10 - CGFloat(b.level) * bracketStep
+            let drop: CGFloat = 5
+            var bracket = Path()
+            bracket.move(to: CGPoint(x: cxA, y: y + drop))
+            bracket.addLine(to: CGPoint(x: cxA, y: y))
+            bracket.addLine(to: CGPoint(x: cxB, y: y))
+            bracket.addLine(to: CGPoint(x: cxB, y: y + drop))
+            context.stroke(bracket, with: .color(.primary), lineWidth: 1)
+            if !b.label.isEmpty {
+                context.draw(
+                    Text(b.label).font(.system(size: 12)).foregroundColor(.primary),
+                    at: CGPoint(x: (cxA + cxB) / 2, y: y - 7)
+                )
+            }
         }
     }
 
@@ -151,10 +182,12 @@ struct ChartView: View {
     }
 
     private func drawYAxis(_ context: GraphicsContext, plot: CGRect,
-                           yRange: (lo: Double, hi: Double), yLabel: String) {
+                           yRange: (lo: Double, hi: Double), yLabel: String,
+                           height: CGFloat? = nil) {
+        let mapHeight = height ?? plot.height
         let yticks = ticks(yRange.lo, yRange.hi, 5)
         for t in yticks {
-            let y = plot.maxY - CGFloat((t - yRange.lo) / (yRange.hi - yRange.lo)) * plot.height
+            let y = plot.maxY - CGFloat((t - yRange.lo) / (yRange.hi - yRange.lo)) * mapHeight
             var tick = Path()
             tick.move(to: CGPoint(x: plot.minX - 4, y: y))
             tick.addLine(to: CGPoint(x: plot.minX, y: y))

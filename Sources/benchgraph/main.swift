@@ -63,6 +63,18 @@ func runTTest(_ o: Options) throws {
         result = TTest.unpaired(a.present, b.present, welch: !o.flag("student"))
     }
     print(format(result, header: "\(a.name) vs \(b.name)"))
+
+    if let path = o.figurePath {
+        let kind = o.errorBarKind
+        let bars = barGroups(table, kind: kind, limit: 2)
+        var brackets: [BarBracket] = []
+        if let p = result.value("p (two-tailed)") {
+            let mark = Significance.stars(p)
+            if !mark.isEmpty { brackets = [BarBracket(fromIndex: 0, toIndex: 1, label: mark)] }
+        }
+        try renderFigure(.bars(title: "\(a.name) vs \(b.name)", yLabel: kind.caption,
+                               groups: bars, brackets: brackets), to: path)
+    }
 }
 
 func runANOVA(_ o: Options) throws {
@@ -73,11 +85,9 @@ func runANOVA(_ o: Options) throws {
     print(format(result, header: "One-way ANOVA across \(groups.count) groups"))
 
     if let path = o.figurePath {
-        let bars = table.columns.map { col -> SVGRenderer.BarGroup in
-            let s = Descriptive.summary(col.present)
-            return SVGRenderer.BarGroup(label: col.name, value: s.mean, error: s.sem)
-        }
-        try renderFigure(.bars(title: "Group means ± SEM", yLabel: "Value", groups: bars), to: path)
+        let kind = o.errorBarKind
+        let bars = barGroups(table, kind: kind)
+        try renderFigure(.bars(title: "Group means", yLabel: kind.caption, groups: bars, brackets: []), to: path)
     }
 }
 
@@ -87,6 +97,22 @@ func runPostHoc(_ o: Options) throws {
     let groups = table.columns.map { (name: $0.name, values: $0.present) }
     let result = PostHoc.pairwise(groups)
     print(format(result, header: "Post-hoc pairwise comparisons (\(groups.count) groups)"))
+
+    if let path = o.figurePath {
+        let kind = o.errorBarKind
+        let bars = barGroups(table, kind: kind)
+        let names = table.columns.map(\.name)
+        var brackets: [BarBracket] = []
+        for i in 0..<names.count {
+            for j in (i + 1)..<names.count {
+                guard let p = result.value("\(names[i]) vs \(names[j]): p (Holm)") else { continue }
+                let mark = Significance.stars(p)
+                if !mark.isEmpty { brackets.append(BarBracket(fromIndex: i, toIndex: j, label: mark)) }
+            }
+        }
+        try renderFigure(.bars(title: "Post-hoc comparisons", yLabel: kind.caption,
+                               groups: bars, brackets: brackets), to: path)
+    }
 }
 
 func runMannWhitney(_ o: Options) throws {
@@ -199,6 +225,15 @@ func formatNumber(_ v: Double) -> String {
     return String(format: "%.5g", v)
 }
 
+/// Build bar groups (mean ± selected error statistic) for the given columns.
+func barGroups(_ table: DataTable, kind: ErrorBarKind, limit: Int? = nil) -> [SVGRenderer.BarGroup] {
+    let cols = limit.map { Array(table.columns.prefix($0)) } ?? table.columns
+    return cols.map { col in
+        let s = Descriptive.summary(col.present)
+        return SVGRenderer.BarGroup(label: col.name, value: s.mean, error: kind.halfLength(s))
+    }
+}
+
 /// Render a figure to `path`, choosing SVG / PDF / PNG / TIFF from the file
 /// extension (shared with the GUI via `FigureExport`).
 func renderFigure(_ req: FigureExport.Request, to path: String) throws {
@@ -251,6 +286,15 @@ struct Options {
     /// Figure output path: `--out <path.ext>` (format by extension) or the
     /// legacy `--svg <path>`.
     var figurePath: String? { named["out"] ?? named["svg"] }
+
+    /// Error-bar statistic for bar figures: `--error sd|sem|ci` (default SEM).
+    var errorBarKind: ErrorBarKind {
+        switch (named["error"] ?? "sem").lowercased() {
+        case "sd": return .sd
+        case "ci", "ci95", "95ci": return .ci95
+        default: return .sem
+        }
+    }
 
     var inputPath: String? { positionals.first }
 
@@ -305,12 +349,18 @@ func printUsage() {
     GLOBAL OPTIONS:
       --no-header   treat the first row as data, not column names
       --out <path>  also export a figure; format from extension:
-                      .svg .pdf .png .tiff  (anova, regress, doseresponse)
+                      .svg .pdf .png .tiff
+                      (ttest, anova, posthoc, regress, doseresponse)
       --svg <path>  alias for --out with an .svg file
+      --error <k>   bar error bars: sd | sem | ci  (default sem)
+
+    Bar figures (ttest, posthoc) annotate comparisons with significance
+    brackets (****<0.0001, ***<0.001, **<0.01, *<0.05, ns).
 
     EXAMPLES:
       benchgraph describe data.csv
-      benchgraph ttest groups.csv --student
+      benchgraph ttest groups.csv --student --out fig.pdf --error ci
+      benchgraph posthoc groups.csv --out posthoc.svg
       benchgraph doseresponse curve.csv --interpolate 50 --svg curve.svg
     """)
 }

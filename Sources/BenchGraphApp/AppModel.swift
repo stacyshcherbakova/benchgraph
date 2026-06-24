@@ -46,7 +46,7 @@ enum Analysis: String, CaseIterable, Identifiable {
 enum ChartSpec: Equatable {
     case none
     case scatter(points: [Point], curve: [Point]?, logX: Bool, xLabel: String, yLabel: String)
-    case bars(groups: [Bar], yLabel: String)
+    case bars(groups: [Bar], yLabel: String, brackets: [BarBracket])
 
     struct Point: Equatable { let x: Double; let y: Double }
     struct Bar: Equatable { let label: String; let value: Double; let error: Double }
@@ -64,11 +64,23 @@ final class AppModel: ObservableObject {
     @Published var hasHeader: Bool {
         didSet { recompute() }
     }
+    /// Which spread statistic the bar error bars show (SD / SEM / 95% CI).
+    @Published var errorBar: ErrorBarKind = .sem {
+        didSet { recompute() }
+    }
+    /// Whether to draw significance brackets linking compared groups.
+    @Published var showSignificance: Bool = true {
+        didSet { recompute() }
+    }
 
     @Published private(set) var table: DataTable?
     @Published private(set) var result: AnalysisResult?
     @Published private(set) var chart: ChartSpec = .none
     @Published private(set) var errorMessage: String?
+
+    /// Whether the current figure is a column chart (error-bar/significance
+    /// controls only apply to these).
+    var isBarChart: Bool { if case .bars = chart { return true }; return false }
 
     init() {
         // Prefill with the bundled dose-response sample so the window is alive
@@ -187,6 +199,15 @@ final class AppModel: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
+
+        // Link analysis p-values to the bar chart as significance brackets.
+        if showSignificance, let result, case let .bars(groups, yLabel, _) = chart {
+            let brackets = significanceBrackets(analysis: analysis, result: result,
+                                                barCount: groups.count, table: parsed)
+            if !brackets.isEmpty {
+                chart = .bars(groups: groups, yLabel: yLabel, brackets: brackets)
+            }
+        }
     }
 
     // MARK: - Project documents
@@ -220,10 +241,11 @@ final class AppModel: ObservableObject {
                 curve: curve?.map { (x: $0.x, y: $0.y) },
                 logX: logX
             )
-        case let .bars(groups, yLabel):
+        case let .bars(groups, yLabel, brackets):
             return .bars(
                 title: analysis.rawValue, yLabel: yLabel,
-                groups: groups.map { .init(label: $0.label, value: $0.value, error: $0.error) }
+                groups: groups.map { .init(label: $0.label, value: $0.value, error: $0.error) },
+                brackets: brackets
             )
         }
     }
@@ -260,9 +282,41 @@ final class AppModel: ObservableObject {
         let bars = cols.compactMap { col -> ChartSpec.Bar? in
             let s = Descriptive.summary(col.present)
             guard s.mean.isFinite else { return nil }
-            return .init(label: col.name, value: s.mean, error: s.sem.isFinite ? s.sem : 0)
+            let half = errorBar.halfLength(s)
+            return .init(label: col.name, value: s.mean, error: half.isFinite ? half : 0)
         }
-        return bars.isEmpty ? .none : .bars(groups: bars, yLabel: "Mean ± SEM")
+        return bars.isEmpty ? .none : .bars(groups: bars, yLabel: errorBar.caption, brackets: [])
+    }
+
+    /// Build significance brackets that link the bars to the analysis p-values.
+    /// Only pairwise tests produce them; the omnibus ANOVA and single-sample
+    /// analyses have no pair to bracket.
+    private func significanceBrackets(analysis: Analysis, result: AnalysisResult,
+                                      barCount: Int, table: DataTable) -> [BarBracket] {
+        func bracket(_ i: Int, _ j: Int, _ p: Double) -> BarBracket? {
+            let mark = Significance.stars(p)
+            guard !mark.isEmpty, i < barCount, j < barCount else { return nil }
+            return BarBracket(fromIndex: i, toIndex: j, label: mark)
+        }
+        switch analysis {
+        case .tTestWelch, .tTestStudent, .tTestPaired, .mannWhitney, .wilcoxon:
+            guard let p = result.value("p (two-tailed)"), let b = bracket(0, 1, p) else { return [] }
+            return [b]
+        case .postHoc:
+            let names = table.columns.map(\.name)
+            var out: [BarBracket] = []
+            for i in 0..<names.count {
+                for j in (i + 1)..<names.count {
+                    if let p = result.value("\(names[i]) vs \(names[j]): p (Holm)"),
+                       let b = bracket(i, j, p) {
+                        out.append(b)
+                    }
+                }
+            }
+            return out
+        default:
+            return []
+        }
     }
 
     private func xName(_ t: DataTable) -> String { t.columns.first?.name ?? "X" }
