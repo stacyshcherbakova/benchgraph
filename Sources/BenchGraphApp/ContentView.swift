@@ -56,19 +56,42 @@ struct ContentView: View {
             Text(model.analysis.hint)
                 .font(.caption).foregroundColor(.secondary)
 
-            if model.isBarChart {
-                HStack(spacing: 12) {
-                    Picker("Error bars", selection: $model.errorBar) {
-                        ForEach(ErrorBarKind.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            if model.isColumnChart {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 12) {
+                        Picker("Plot", selection: $model.columnPlot) {
+                            ForEach(ColumnPlot.allCases) { Text($0.rawValue).tag($0) }
+                        }
+                        .pickerStyle(.segmented)
+                        .fixedSize()
+                        Spacer()
+                        Toggle("Significance", isOn: $model.showSignificance)
+                            .toggleStyle(.checkbox)
                     }
-                    .pickerStyle(.segmented)
-                    .fixedSize()
-                    Spacer()
-                    Toggle("Significance", isOn: $model.showSignificance)
-                        .toggleStyle(.checkbox)
+                    if model.isBarChart {
+                        Picker("Error bars", selection: $model.errorBar) {
+                            ForEach(ErrorBarKind.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                        }
+                        .pickerStyle(.segmented)
+                        .fixedSize()
+                    }
                 }
                 .controlSize(.small)
             }
+
+            HStack(spacing: 8) {
+                Text("Theme").font(.caption).foregroundColor(.secondary)
+                Picker("Theme", selection: Binding(
+                    get: { model.theme.name },
+                    set: { if let t = Theme.named($0) { model.theme = t } }
+                )) {
+                    ForEach(Theme.presets, id: \.name) { Text($0.name).tag($0.name) }
+                }
+                .labelsHidden()
+                .fixedSize()
+                Spacer()
+            }
+            .controlSize(.small)
 
             Text("Paste CSV / TSV (from Excel or Numbers)")
                 .font(.caption).foregroundColor(.secondary)
@@ -112,7 +135,7 @@ struct ContentView: View {
                 .padding(14)
             }
             Divider()
-            ChartView(spec: model.chart)
+            ChartView(spec: model.chart, theme: model.theme)
                 .frame(minHeight: 260)
         }
     }

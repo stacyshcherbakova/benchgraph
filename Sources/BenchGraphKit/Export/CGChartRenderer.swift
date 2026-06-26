@@ -6,8 +6,9 @@ import UniformTypeIdentifiers
 
 /// Renders charts to raster (PNG/TIFF) and vector (PDF) formats using
 /// CoreGraphics, complementing the text-based `SVGRenderer`. It reuses the
-/// same `Series` / `BarGroup` inputs so a figure exports identically across
-/// formats. CoreGraphics uses a bottom-left origin, so y increases upward here.
+/// same `Series` / `BarGroup` / `BoxGroup` / `ViolinGroup` inputs so a figure
+/// exports identically across formats. CoreGraphics uses a bottom-left origin,
+/// so y increases upward here.
 public struct CGChartRenderer {
 
     public enum Format {
@@ -24,17 +25,28 @@ public struct CGChartRenderer {
 
     public let width: CGFloat
     public let height: CGFloat
+    public let theme: Theme
     private let margin = (top: 30.0, right: 30.0, bottom: 55.0, left: 70.0)
     /// Vertical spacing between stacked significance brackets, in points.
     private let bracketStep: CGFloat = 16
-    private let dataColor = CGColor(red: 0.173, green: 0.435, blue: 0.733, alpha: 1)
-    private let curveColor = CGColor(red: 0.82, green: 0.286, blue: 0.357, alpha: 1)
-    private let axisColor = CGColor(gray: 0.2, alpha: 1)
+    private let primaryColor: CGColor
+    private let curveColor: CGColor
+    private let axisColor: CGColor
+    private let textColor: CGColor
+    private let backgroundColor: CGColor
 
-    public init(width: CGFloat = 520, height: CGFloat = 380) {
+    public init(width: CGFloat = 520, height: CGFloat = 380, theme: Theme = .default) {
         self.width = width
         self.height = height
+        self.theme = theme
+        self.primaryColor = CGChartRenderer.cgColor(theme.primaryColor)
+        self.curveColor = CGChartRenderer.cgColor(theme.curveColor)
+        self.axisColor = CGChartRenderer.cgColor(theme.axisColor)
+        self.textColor = CGChartRenderer.cgColor(theme.textColor)
+        self.backgroundColor = CGChartRenderer.cgColor(theme.backgroundColor)
     }
+
+    private func paletteColor(at i: Int) -> CGColor { CGChartRenderer.cgColor(theme.color(at: i)) }
 
     private var plot: CGRect {
         CGRect(x: margin.left, y: margin.bottom,
@@ -65,6 +77,28 @@ public struct CGChartRenderer {
     ) -> Data? {
         render(format: format) { ctx in
             drawBars(ctx, title: title, yLabel: yLabel, groups: groups, brackets: brackets)
+        }
+    }
+
+    public func boxPlot(
+        format: Format,
+        title: String, yLabel: String,
+        groups: [SVGRenderer.BoxGroup],
+        brackets: [BarBracket] = []
+    ) -> Data? {
+        render(format: format) { ctx in
+            drawBoxes(ctx, title: title, yLabel: yLabel, groups: groups, brackets: brackets)
+        }
+    }
+
+    public func violinPlot(
+        format: Format,
+        title: String, yLabel: String,
+        groups: [SVGRenderer.ViolinGroup],
+        brackets: [BarBracket] = []
+    ) -> Data? {
+        render(format: format) { ctx in
+            drawViolins(ctx, title: title, yLabel: yLabel, groups: groups, brackets: brackets)
         }
     }
 
@@ -112,7 +146,7 @@ public struct CGChartRenderer {
     }
 
     private func fillBackground(_ ctx: CGContext) {
-        ctx.setFillColor(CGColor(gray: 1, alpha: 1))
+        ctx.setFillColor(backgroundColor)
         ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
     }
 
@@ -137,7 +171,6 @@ public struct CGChartRenderer {
 
         drawTitle(ctx, title)
         drawAxesFrame(ctx)
-        // X ticks (t is already in the transformed/log space when logX).
         ctx.setStrokeColor(axisColor)
         ctx.setLineWidth(1)
         for t in ticks(xr.lo, xr.hi) {
@@ -149,7 +182,6 @@ public struct CGChartRenderer {
         drawText(ctx, xLabel, at: CGPoint(x: plot.midX, y: 14), size: 12, align: .center)
         drawYAxisLabel(ctx, yLabel)
 
-        // Fitted curve.
         if let curve, curve.count > 1 {
             ctx.setStrokeColor(curveColor)
             ctx.setLineWidth(2)
@@ -158,14 +190,14 @@ public struct CGChartRenderer {
             for p in curve.dropFirst() { ctx.addLine(to: CGPoint(x: px(p.x), y: py(p.y))) }
             ctx.strokePath()
         }
-        // Data points.
-        for s in series {
+        for (si, s) in series.enumerated() {
+            let color = s.color == "#2C6FBB" ? paletteColor(at: si) : CGChartRenderer.cgColor(s.color)
             for p in s.points {
                 let r: CGFloat = 4
                 let rect = CGRect(x: px(p.x) - r, y: py(p.y) - r, width: 2 * r, height: 2 * r)
-                ctx.setFillColor(dataColor)
+                ctx.setFillColor(color)
                 ctx.fillEllipse(in: rect)
-                ctx.setStrokeColor(CGColor(gray: 1, alpha: 1))
+                ctx.setStrokeColor(backgroundColor)
                 ctx.setLineWidth(1)
                 ctx.strokeEllipse(in: rect)
             }
@@ -179,11 +211,8 @@ public struct CGChartRenderer {
         guard !groups.isEmpty else { return }
         let maxValue = groups.map { $0.value + $0.error }.max() ?? 1
         let yr = niceRange(0, maxValue > 0 ? maxValue : 1)
-        // Reserve a pixel band at the top for significance brackets (y grows up).
         let laid = BracketLayout.assignLevels(brackets)
-        let levelCount = (laid.map(\.level).max() ?? -1) + 1
-        let band = laid.isEmpty ? 0 : CGFloat(levelCount) * bracketStep + 14
-        let usableHeight = plot.height - band
+        let usableHeight = plot.height - bracketBand(laid)
         func py(_ y: Double) -> CGFloat { plot.minY + CGFloat((y - yr.lo) / (yr.hi - yr.lo)) * usableHeight }
 
         drawTitle(ctx, title)
@@ -194,9 +223,10 @@ public struct CGChartRenderer {
         let slot = plot.width / CGFloat(groups.count)
         let barWidth = slot * 0.6
         for (i, g) in groups.enumerated() {
-            let cx = plot.minX + slot * (CGFloat(i) + 0.5)
+            let cx = slotCenter(i, slot: slot)
             let top = py(g.value)
-            ctx.setFillColor(dataColor)
+            let fill = g.color == "#2C6FBB" ? primaryColor : CGChartRenderer.cgColor(g.color)
+            ctx.setFillColor(fill)
             ctx.fill(CGRect(x: cx - barWidth / 2, y: plot.minY, width: barWidth, height: top - plot.minY))
             if g.error > 0 {
                 ctx.setStrokeColor(axisColor)
@@ -207,21 +237,157 @@ public struct CGChartRenderer {
             drawText(ctx, g.label, at: CGPoint(x: cx, y: plot.minY - 16), size: 11, align: .center)
         }
 
-        // Significance brackets (larger y is higher on the page).
+        drawBrackets(ctx, laid, slot: slot, count: groups.count) { i in py(groups[i].value + groups[i].error) }
+    }
+
+    // MARK: - Boxes
+
+    private func drawBoxes(_ ctx: CGContext, title: String, yLabel: String,
+                           groups: [SVGRenderer.BoxGroup], brackets: [BarBracket]) {
+        guard !groups.isEmpty else { return }
+        let lo = groups.map { $0.stats.displayRange.lo }.min() ?? 0
+        let hi = groups.map { $0.stats.displayRange.hi }.max() ?? 1
+        guard lo.isFinite, hi.isFinite else { return }
+        let yr = niceRange(lo, hi)
+        let laid = BracketLayout.assignLevels(brackets)
+        let usableHeight = plot.height - bracketBand(laid)
+        func py(_ y: Double) -> CGFloat { plot.minY + CGFloat((y - yr.lo) / (yr.hi - yr.lo)) * usableHeight }
+
+        drawTitle(ctx, title)
+        stroke(ctx, from: CGPoint(x: plot.minX, y: plot.minY), to: CGPoint(x: plot.maxX, y: plot.minY))
+        drawYTicks(ctx, yr: yr, py: py)
+        drawYAxisLabel(ctx, yLabel)
+
+        let slot = plot.width / CGFloat(groups.count)
+        let boxWidth = slot * 0.5
+        for (i, g) in groups.enumerated() {
+            let cx = slotCenter(i, slot: slot)
+            let s = g.stats
+            ctx.setStrokeColor(axisColor)
+            ctx.setLineWidth(1)
+            // Whiskers + caps.
+            stroke(ctx, from: CGPoint(x: cx, y: py(s.lowerWhisker)), to: CGPoint(x: cx, y: py(s.q1)))
+            stroke(ctx, from: CGPoint(x: cx, y: py(s.q3)), to: CGPoint(x: cx, y: py(s.upperWhisker)))
+            stroke(ctx, from: CGPoint(x: cx - boxWidth / 4, y: py(s.upperWhisker)), to: CGPoint(x: cx + boxWidth / 4, y: py(s.upperWhisker)))
+            stroke(ctx, from: CGPoint(x: cx - boxWidth / 4, y: py(s.lowerWhisker)), to: CGPoint(x: cx + boxWidth / 4, y: py(s.lowerWhisker)))
+            // Box.
+            let boxRect = CGRect(x: cx - boxWidth / 2, y: py(s.q1), width: boxWidth, height: py(s.q3) - py(s.q1))
+            ctx.setFillColor(paletteColor(at: i).copy(alpha: 0.65) ?? paletteColor(at: i))
+            ctx.fill(boxRect)
+            ctx.setStrokeColor(axisColor)
+            ctx.stroke(boxRect)
+            // Median.
+            ctx.setLineWidth(1.8)
+            stroke(ctx, from: CGPoint(x: cx - boxWidth / 2, y: py(s.median)), to: CGPoint(x: cx + boxWidth / 2, y: py(s.median)))
+            // Mean cross.
+            if s.mean.isFinite {
+                ctx.setStrokeColor(textColor)
+                ctx.setLineWidth(1)
+                let ym = py(s.mean)
+                stroke(ctx, from: CGPoint(x: cx - 3, y: ym), to: CGPoint(x: cx + 3, y: ym))
+                stroke(ctx, from: CGPoint(x: cx, y: ym - 3), to: CGPoint(x: cx, y: ym + 3))
+            }
+            // Outliers.
+            ctx.setStrokeColor(axisColor)
+            ctx.setLineWidth(1)
+            for o in s.outliers {
+                let r: CGFloat = 2.5
+                ctx.strokeEllipse(in: CGRect(x: cx - r, y: py(o) - r, width: 2 * r, height: 2 * r))
+            }
+            drawText(ctx, g.label, at: CGPoint(x: cx, y: plot.minY - 16), size: 11, align: .center)
+        }
+
+        drawBrackets(ctx, laid, slot: slot, count: groups.count) { i in py(groups[i].stats.displayRange.hi) }
+    }
+
+    // MARK: - Violins
+
+    private func drawViolins(_ ctx: CGContext, title: String, yLabel: String,
+                             groups: [SVGRenderer.ViolinGroup], brackets: [BarBracket]) {
+        guard groups.contains(where: { $0.density.count > 1 }) else {
+            drawBoxes(ctx, title: title, yLabel: yLabel,
+                      groups: groups.map { SVGRenderer.BoxGroup(label: $0.label, stats: $0.stats) },
+                      brackets: brackets)
+            return
+        }
+        let values = groups.flatMap { $0.density.map(\.value) }
+        guard let lo = values.min(), let hi = values.max() else { return }
+        let yr = niceRange(lo, hi)
+        let laid = BracketLayout.assignLevels(brackets)
+        let usableHeight = plot.height - bracketBand(laid)
+        func py(_ y: Double) -> CGFloat { plot.minY + CGFloat((y - yr.lo) / (yr.hi - yr.lo)) * usableHeight }
+
+        drawTitle(ctx, title)
+        stroke(ctx, from: CGPoint(x: plot.minX, y: plot.minY), to: CGPoint(x: plot.maxX, y: plot.minY))
+        drawYTicks(ctx, yr: yr, py: py)
+        drawYAxisLabel(ctx, yLabel)
+
+        let slot = plot.width / CGFloat(groups.count)
+        let maxHalf = slot * 0.42
+        for (i, g) in groups.enumerated() {
+            let cx = slotCenter(i, slot: slot)
+            guard g.density.count > 1, let peak = g.density.map(\.density).max(), peak > 0 else { continue }
+            ctx.beginPath()
+            let right = g.density.map { CGPoint(x: cx + CGFloat($0.density / peak) * maxHalf, y: py($0.value)) }
+            let left = g.density.reversed().map { CGPoint(x: cx - CGFloat($0.density / peak) * maxHalf, y: py($0.value)) }
+            let outline = right + left
+            ctx.move(to: outline[0])
+            for p in outline.dropFirst() { ctx.addLine(to: p) }
+            ctx.closePath()
+            ctx.setFillColor(paletteColor(at: i).copy(alpha: 0.55) ?? paletteColor(at: i))
+            ctx.drawPath(using: .fill)
+            // Re-stroke the outline.
+            ctx.beginPath()
+            ctx.move(to: outline[0])
+            for p in outline.dropFirst() { ctx.addLine(to: p) }
+            ctx.closePath()
+            ctx.setStrokeColor(axisColor)
+            ctx.setLineWidth(1)
+            ctx.strokePath()
+
+            // Inner box overlay.
+            let s = g.stats
+            if s.q1.isFinite && s.q3.isFinite {
+                ctx.setStrokeColor(axisColor)
+                ctx.setLineWidth(1)
+                stroke(ctx, from: CGPoint(x: cx, y: py(s.lowerWhisker)), to: CGPoint(x: cx, y: py(s.upperWhisker)))
+                ctx.setStrokeColor(textColor)
+                ctx.setLineWidth(4)
+                stroke(ctx, from: CGPoint(x: cx, y: py(s.q1)), to: CGPoint(x: cx, y: py(s.q3)))
+                let r: CGFloat = 2.4
+                ctx.setFillColor(backgroundColor)
+                ctx.fillEllipse(in: CGRect(x: cx - r, y: py(s.median) - r, width: 2 * r, height: 2 * r))
+            }
+            drawText(ctx, g.label, at: CGPoint(x: cx, y: plot.minY - 16), size: 11, align: .center)
+        }
+
+        drawBrackets(ctx, laid, slot: slot, count: groups.count) { i in py(groups[i].density.map(\.value).max() ?? 0) }
+    }
+
+    // MARK: - Shared category helpers
+
+    private func bracketBand(_ laid: [BarBracket]) -> CGFloat {
+        let levelCount = (laid.map(\.level).max() ?? -1) + 1
+        return laid.isEmpty ? 0 : CGFloat(levelCount) * bracketStep + 14
+    }
+
+    private func slotCenter(_ i: Int, slot: CGFloat) -> CGFloat { plot.minX + slot * (CGFloat(i) + 0.5) }
+
+    /// Significance brackets (larger y is higher on the page). `topY(i)` returns
+    /// the y of the top of element i.
+    private func drawBrackets(_ ctx: CGContext, _ laid: [BarBracket], slot: CGFloat, count: Int, topY: (Int) -> CGFloat) {
         ctx.setStrokeColor(axisColor)
         ctx.setLineWidth(1)
-        for b in laid where groups.indices.contains(b.lo) && groups.indices.contains(b.hi) {
-            let cxA = plot.minX + slot * (CGFloat(b.fromIndex) + 0.5)
-            let cxB = plot.minX + slot * (CGFloat(b.toIndex) + 0.5)
-            let barTop = max(py(groups[b.fromIndex].value + groups[b.fromIndex].error),
-                             py(groups[b.toIndex].value + groups[b.toIndex].error))
-            let y = barTop + 10 + CGFloat(b.level) * bracketStep
+        for b in laid where (0..<count).contains(b.lo) && (0..<count).contains(b.hi) {
+            let cxA = slotCenter(b.fromIndex, slot: slot)
+            let cxB = slotCenter(b.toIndex, slot: slot)
+            let y = max(topY(b.fromIndex), topY(b.toIndex)) + 10 + CGFloat(b.level) * bracketStep
             let drop: CGFloat = 5
             stroke(ctx, from: CGPoint(x: cxA, y: y), to: CGPoint(x: cxB, y: y))
             stroke(ctx, from: CGPoint(x: cxA, y: y), to: CGPoint(x: cxA, y: y - drop))
             stroke(ctx, from: CGPoint(x: cxB, y: y), to: CGPoint(x: cxB, y: y - drop))
             if !b.label.isEmpty {
-                drawText(ctx, b.label, at: CGPoint(x: (cxA + cxB) / 2, y: y + 3), size: 12, align: .center)
+                drawText(ctx, b.label, at: CGPoint(x: (cxA + cxB) / 2, y: y + 3), size: 12, align: .center, color: textColor)
             }
         }
     }
@@ -247,7 +413,7 @@ public struct CGChartRenderer {
 
     private func drawTitle(_ ctx: CGContext, _ title: String) {
         guard !title.isEmpty else { return }
-        drawText(ctx, title, at: CGPoint(x: width / 2, y: height - 22), size: 14, align: .center, bold: true)
+        drawText(ctx, title, at: CGPoint(x: width / 2, y: height - 22), size: 14, align: .center, bold: true, color: textColor)
     }
 
     private func drawYAxisLabel(_ ctx: CGContext, _ label: String) {
@@ -267,8 +433,9 @@ public struct CGChartRenderer {
 
     private enum Align { case left, center, right }
 
-    private func drawText(_ ctx: CGContext, _ s: String, at p: CGPoint, size: CGFloat, align: Align, bold: Bool = false) {
-        let fontName = (bold ? "Helvetica-Bold" : "Helvetica") as CFString
+    private func drawText(_ ctx: CGContext, _ s: String, at p: CGPoint, size: CGFloat, align: Align,
+                          bold: Bool = false, color: CGColor? = nil) {
+        let fontName = (bold ? theme.boldFontName : theme.fontName) as CFString
         let font = CTFontCreateWithName(fontName, size, nil)
         let attrs: [NSAttributedString.Key: Any] = [
             NSAttributedString.Key(kCTFontAttributeName as String): font,
@@ -282,10 +449,24 @@ public struct CGChartRenderer {
         case .right:  x -= bounds.width
         case .left:   break
         }
-        ctx.setFillColor(axisColor)
+        ctx.setFillColor(color ?? axisColor)
         ctx.setTextDrawingMode(.fill)
         ctx.textPosition = CGPoint(x: x, y: p.y)
         CTLineDraw(line, ctx)
+    }
+
+    // MARK: - Color
+
+    /// Parse a `#RRGGBB` hex string into a device-RGB `CGColor`, falling back to
+    /// mid-gray for malformed input.
+    static func cgColor(_ hex: String) -> CGColor {
+        var s = hex
+        if s.hasPrefix("#") { s.removeFirst() }
+        guard s.count == 6, let v = Int(s, radix: 16) else { return CGColor(gray: 0.5, alpha: 1) }
+        let r = CGFloat((v >> 16) & 0xFF) / 255
+        let g = CGFloat((v >> 8) & 0xFF) / 255
+        let b = CGFloat(v & 0xFF) / 255
+        return CGColor(red: r, green: g, blue: b, alpha: 1)
     }
 
     // MARK: - Scaling

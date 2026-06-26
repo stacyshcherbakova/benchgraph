@@ -42,14 +42,26 @@ enum Analysis: String, CaseIterable, Identifiable {
     }
 }
 
+/// How a column-data analysis is visualised.
+enum ColumnPlot: String, CaseIterable, Identifiable {
+    case bar    = "Bars"
+    case box    = "Box"
+    case violin = "Violin"
+    var id: String { rawValue }
+}
+
 /// What the chart view should draw for the current result.
 enum ChartSpec: Equatable {
     case none
     case scatter(points: [Point], curve: [Point]?, logX: Bool, xLabel: String, yLabel: String)
     case bars(groups: [Bar], yLabel: String, brackets: [BarBracket])
+    case box(groups: [Samples], yLabel: String, brackets: [BarBracket])
+    case violin(groups: [Samples], yLabel: String, brackets: [BarBracket])
 
     struct Point: Equatable { let x: Double; let y: Double }
     struct Bar: Equatable { let label: String; let value: Double; let error: Double }
+    /// A named group of raw observations, for box/violin plots.
+    struct Samples: Equatable { let label: String; let values: [Double] }
 }
 
 /// Drives the whole window: raw data + chosen analysis → live result + chart.
@@ -68,19 +80,34 @@ final class AppModel: ObservableObject {
     @Published var errorBar: ErrorBarKind = .sem {
         didSet { recompute() }
     }
+    /// How column data is drawn (bars / box / violin).
+    @Published var columnPlot: ColumnPlot = .bar {
+        didSet { recompute() }
+    }
     /// Whether to draw significance brackets linking compared groups.
     @Published var showSignificance: Bool = true {
         didSet { recompute() }
     }
+    /// Journal theme used for the live chart and figure export.
+    @Published var theme: Theme = .default
 
     @Published private(set) var table: DataTable?
     @Published private(set) var result: AnalysisResult?
     @Published private(set) var chart: ChartSpec = .none
     @Published private(set) var errorMessage: String?
 
-    /// Whether the current figure is a column chart (error-bar/significance
-    /// controls only apply to these).
+    /// Whether the current figure is a bar chart (the error-bar picker only
+    /// applies to these).
     var isBarChart: Bool { if case .bars = chart { return true }; return false }
+
+    /// Whether the current figure draws grouped column data (bars / box /
+    /// violin) — the plot-style and significance controls apply to these.
+    var isColumnChart: Bool {
+        switch chart {
+        case .bars, .box, .violin: return true
+        default: return false
+        }
+    }
 
     init() {
         // Prefill with the bundled dose-response sample so the window is alive
@@ -117,15 +144,15 @@ final class AppModel: ObservableObject {
             switch analysis {
             case .descriptive:
                 result = Descriptive.analyze(parsed.columns[0])
-                chart = columnBars(parsed)
+                chart = columnChart(parsed)
             case .tTestWelch:
                 let (a, b) = try twoColumns(parsed)
                 result = TTest.unpaired(a.present, b.present, welch: true)
-                chart = columnBars(parsed, limit: 2)
+                chart = columnChart(parsed, limit: 2)
             case .tTestStudent:
                 let (a, b) = try twoColumns(parsed)
                 result = TTest.unpaired(a.present, b.present, welch: false)
-                chart = columnBars(parsed, limit: 2)
+                chart = columnChart(parsed, limit: 2)
             case .tTestPaired:
                 let (a, b) = try twoColumns(parsed)
                 let pairs = zip(a.values, b.values).compactMap { l, r -> (Double, Double)? in
@@ -134,21 +161,21 @@ final class AppModel: ObservableObject {
                 }
                 guard !pairs.isEmpty else { throw AppError("No complete pairs to compare.") }
                 result = TTest.paired(pairs.map(\.0), pairs.map(\.1))
-                chart = columnBars(parsed, limit: 2)
+                chart = columnChart(parsed, limit: 2)
             case .anova:
                 guard parsed.columns.count >= 2 else { throw AppError("ANOVA needs at least two columns.") }
                 let groups = parsed.columns.map { (name: $0.name, values: $0.present) }
                 result = ANOVA.oneWay(groups)
-                chart = columnBars(parsed)
+                chart = columnChart(parsed)
             case .postHoc:
                 guard parsed.columns.count >= 2 else { throw AppError("Post-hoc comparisons need at least two columns.") }
                 let groups = parsed.columns.map { (name: $0.name, values: $0.present) }
                 result = PostHoc.pairwise(groups)
-                chart = columnBars(parsed)
+                chart = columnChart(parsed)
             case .mannWhitney:
                 let (a, b) = try twoColumns(parsed)
                 result = MannWhitney.test(a.present, b.present)
-                chart = columnBars(parsed, limit: 2)
+                chart = columnChart(parsed, limit: 2)
             case .wilcoxon:
                 let (a, b) = try twoColumns(parsed)
                 let pairs = zip(a.values, b.values).compactMap { l, r -> (Double, Double)? in
@@ -157,10 +184,10 @@ final class AppModel: ObservableObject {
                 }
                 guard !pairs.isEmpty else { throw AppError("No complete pairs to compare.") }
                 result = Wilcoxon.signedRank(pairs.map(\.0), pairs.map(\.1))
-                chart = columnBars(parsed, limit: 2)
+                chart = columnChart(parsed, limit: 2)
             case .normality:
                 result = Normality.dagostinoPearson(parsed.columns[0].present)
-                chart = columnBars(parsed, limit: 1)
+                chart = columnChart(parsed, limit: 1)
             case .pearson:
                 let (x, y) = try xyPairs(parsed)
                 result = Correlation.pearson(x, y)
@@ -200,12 +227,23 @@ final class AppModel: ObservableObject {
             errorMessage = error.localizedDescription
         }
 
-        // Link analysis p-values to the bar chart as significance brackets.
-        if showSignificance, let result, case let .bars(groups, yLabel, _) = chart {
-            let brackets = significanceBrackets(analysis: analysis, result: result,
-                                                barCount: groups.count, table: parsed)
-            if !brackets.isEmpty {
-                chart = .bars(groups: groups, yLabel: yLabel, brackets: brackets)
+        // Link analysis p-values to the column chart as significance brackets.
+        if showSignificance, let result {
+            func marks(_ count: Int) -> [BarBracket] {
+                significanceBrackets(analysis: analysis, result: result, barCount: count, table: parsed)
+            }
+            switch chart {
+            case let .bars(groups, yLabel, _):
+                let b = marks(groups.count)
+                if !b.isEmpty { chart = .bars(groups: groups, yLabel: yLabel, brackets: b) }
+            case let .box(groups, yLabel, _):
+                let b = marks(groups.count)
+                if !b.isEmpty { chart = .box(groups: groups, yLabel: yLabel, brackets: b) }
+            case let .violin(groups, yLabel, _):
+                let b = marks(groups.count)
+                if !b.isEmpty { chart = .violin(groups: groups, yLabel: yLabel, brackets: b) }
+            default:
+                break
             }
         }
     }
@@ -247,6 +285,22 @@ final class AppModel: ObservableObject {
                 groups: groups.map { .init(label: $0.label, value: $0.value, error: $0.error) },
                 brackets: brackets
             )
+        case let .box(groups, yLabel, brackets):
+            return .box(
+                title: analysis.rawValue, yLabel: yLabel,
+                groups: groups.map { .init(label: $0.label, stats: BoxStats.compute($0.values)) },
+                brackets: brackets
+            )
+        case let .violin(groups, yLabel, brackets):
+            return .violin(
+                title: analysis.rawValue, yLabel: yLabel,
+                groups: groups.map {
+                    .init(label: $0.label,
+                          density: KernelDensity.gaussian($0.values),
+                          stats: BoxStats.compute($0.values))
+                },
+                brackets: brackets
+            )
         }
     }
 
@@ -254,7 +308,7 @@ final class AppModel: ObservableObject {
     /// (svg / pdf / png / tiff), matching the on-screen chart.
     func figureData(pathExtension ext: String) -> Data? {
         guard let req = figureRequest() else { return nil }
-        return FigureExport.data(req, pathExtension: ext)
+        return FigureExport.data(req, pathExtension: ext, theme: theme)
     }
 
     // MARK: - Helpers
@@ -277,15 +331,27 @@ final class AppModel: ObservableObject {
         return (pairs.map(\.0), pairs.map(\.1))
     }
 
-    private func columnBars(_ t: DataTable, limit: Int? = nil) -> ChartSpec {
+    private func columnChart(_ t: DataTable, limit: Int? = nil) -> ChartSpec {
         let cols = limit.map { Array(t.columns.prefix($0)) } ?? t.columns
-        let bars = cols.compactMap { col -> ChartSpec.Bar? in
-            let s = Descriptive.summary(col.present)
-            guard s.mean.isFinite else { return nil }
-            let half = errorBar.halfLength(s)
-            return .init(label: col.name, value: s.mean, error: half.isFinite ? half : 0)
+        switch columnPlot {
+        case .bar:
+            let bars = cols.compactMap { col -> ChartSpec.Bar? in
+                let s = Descriptive.summary(col.present)
+                guard s.mean.isFinite else { return nil }
+                let half = errorBar.halfLength(s)
+                return .init(label: col.name, value: s.mean, error: half.isFinite ? half : 0)
+            }
+            return bars.isEmpty ? .none : .bars(groups: bars, yLabel: errorBar.caption, brackets: [])
+        case .box, .violin:
+            let groups = cols.compactMap { col -> ChartSpec.Samples? in
+                let v = col.present
+                return v.isEmpty ? nil : .init(label: col.name, values: v)
+            }
+            guard !groups.isEmpty else { return .none }
+            return columnPlot == .box
+                ? .box(groups: groups, yLabel: "Value", brackets: [])
+                : .violin(groups: groups, yLabel: "Value", brackets: [])
         }
-        return bars.isEmpty ? .none : .bars(groups: bars, yLabel: errorBar.caption, brackets: [])
     }
 
     /// Build significance brackets that link the bars to the analysis p-values.

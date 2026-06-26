@@ -2,16 +2,22 @@ import SwiftUI
 import BenchGraphKit
 
 /// A native SwiftUI chart that draws the current `ChartSpec` (scatter with an
-/// optional fitted curve, or bars with error bars and significance brackets).
-/// This mirrors what the SVG exporter produces, but renders live in the window.
+/// optional fitted curve, bars with error bars, or box / violin distributions),
+/// all with significance brackets. This mirrors what the exporters produce, but
+/// renders live in the window. The `theme` palette colours the data marks so
+/// preset changes are visible immediately; axes/text stay adaptive for legible
+/// light/dark display (export uses the theme's full white-canvas styling).
 struct ChartView: View {
     let spec: ChartSpec
+    var theme: Theme = .default
 
     private let inset = EdgeInsets(top: 16, leading: 52, bottom: 40, trailing: 16)
-    private let dataColor = Color(red: 0.17, green: 0.43, blue: 0.73)
-    private let curveColor = Color(red: 0.82, green: 0.29, blue: 0.36)
     /// Vertical spacing between stacked significance brackets.
     private let bracketStep: CGFloat = 16
+
+    private var dataColor: Color { color(theme.primaryColor) }
+    private var curveColor: Color { color(theme.curveColor) }
+    private func paletteColor(_ i: Int) -> Color { color(theme.color(at: i)) }
 
     var body: some View {
         GeometryReader { geo in
@@ -31,6 +37,10 @@ struct ChartView: View {
                                     logX: logX, xLabel: xLabel, yLabel: yLabel)
                     case let .bars(groups, yLabel, brackets):
                         drawBars(context, plot: plot, groups: groups, yLabel: yLabel, brackets: brackets)
+                    case let .box(groups, yLabel, brackets):
+                        drawBoxes(context, plot: plot, groups: groups, yLabel: yLabel, brackets: brackets)
+                    case let .violin(groups, yLabel, brackets):
+                        drawViolins(context, plot: plot, groups: groups, yLabel: yLabel, brackets: brackets)
                     }
                 }
             }
@@ -62,7 +72,6 @@ struct ChartView: View {
         drawAxes(context, plot: plot, xRange: xRange, yRange: yRange, logX: logX,
                  xLabel: xLabel, yLabel: yLabel)
 
-        // Fitted curve.
         if let curve, curve.count > 1 {
             var path = Path()
             for (i, p) in curve.enumerated() {
@@ -72,7 +81,6 @@ struct ChartView: View {
             context.stroke(path, with: .color(curveColor), lineWidth: 2)
         }
 
-        // Data points.
         for p in points {
             let r: CGFloat = 4
             let rect = CGRect(x: px(p.x) - r, y: py(p.y) - r, width: 2 * r, height: 2 * r)
@@ -89,27 +97,19 @@ struct ChartView: View {
         let maxValue = groups.map { $0.value + $0.error }.max() ?? 1
         let yRange = niceRange(0, maxValue > 0 ? maxValue : 1)
 
-        // Reserve a band at the top for significance brackets (smaller y is higher).
         let laid = BracketLayout.assignLevels(brackets)
-        let levelCount = (laid.map(\.level).max() ?? -1) + 1
-        let band: CGFloat = laid.isEmpty ? 0 : CGFloat(levelCount) * bracketStep + 14
-        let usableHeight = plot.height - band
-
+        let usableHeight = plot.height - bracketBand(laid)
         func py(_ y: Double) -> CGFloat {
             plot.maxY - CGFloat((y - yRange.lo) / (yRange.hi - yRange.lo)) * usableHeight
         }
 
         drawYAxis(context, plot: plot, yRange: yRange, yLabel: yLabel, height: usableHeight)
-        // Baseline.
-        var axis = Path()
-        axis.move(to: CGPoint(x: plot.minX, y: plot.maxY))
-        axis.addLine(to: CGPoint(x: plot.maxX, y: plot.maxY))
-        context.stroke(axis, with: .color(.gray), lineWidth: 1)
+        drawBaseline(context, plot: plot)
 
         let slot = plot.width / CGFloat(groups.count)
         let barWidth = slot * 0.6
         for (i, g) in groups.enumerated() {
-            let cx = plot.minX + slot * (CGFloat(i) + 0.5)
+            let cx = slotCenter(plot, i, slot)
             let top = py(g.value)
             let rect = CGRect(x: cx - barWidth / 2, y: top, width: barWidth, height: plot.maxY - top)
             context.fill(Path(rect), with: .color(dataColor))
@@ -122,20 +122,172 @@ struct ChartView: View {
                 err.addLine(to: CGPoint(x: cx + 6, y: py(g.value + g.error)))
                 context.stroke(err, with: .color(.primary), lineWidth: 1.5)
             }
-
-            context.draw(
-                Text(g.label).font(.system(size: 11)).foregroundColor(.secondary),
-                at: CGPoint(x: cx, y: plot.maxY + 14)
-            )
+            drawCategoryLabel(context, g.label, cx: cx, plot: plot)
         }
 
-        // Significance brackets (smaller y is higher).
-        for b in laid where groups.indices.contains(b.lo) && groups.indices.contains(b.hi) {
-            let cxA = plot.minX + slot * (CGFloat(b.fromIndex) + 0.5)
-            let cxB = plot.minX + slot * (CGFloat(b.toIndex) + 0.5)
-            let barTop = min(py(groups[b.fromIndex].value + groups[b.fromIndex].error),
-                             py(groups[b.toIndex].value + groups[b.toIndex].error))
-            let y = barTop - 10 - CGFloat(b.level) * bracketStep
+        drawBrackets(context, plot: plot, laid: laid, slot: slot, count: groups.count) { i in
+            py(groups[i].value + groups[i].error)
+        }
+    }
+
+    // MARK: - Box-and-whisker
+
+    private func drawBoxes(_ context: GraphicsContext, plot: CGRect,
+                           groups: [ChartSpec.Samples], yLabel: String, brackets: [BarBracket]) {
+        let stats = groups.map { (label: $0.label, s: BoxStats.compute($0.values)) }
+        let los = stats.map { $0.s.displayRange.lo }
+        let his = stats.map { $0.s.displayRange.hi }
+        guard let lo = los.min(), let hi = his.max(), lo.isFinite, hi.isFinite else {
+            drawPlaceholder(context, plot: plot); return
+        }
+        let yRange = niceRange(lo, hi)
+        let laid = BracketLayout.assignLevels(brackets)
+        let usableHeight = plot.height - bracketBand(laid)
+        func py(_ v: Double) -> CGFloat {
+            plot.maxY - CGFloat((v - yRange.lo) / (yRange.hi - yRange.lo)) * usableHeight
+        }
+
+        drawYAxis(context, plot: plot, yRange: yRange, yLabel: yLabel, height: usableHeight)
+        drawBaseline(context, plot: plot)
+
+        let slot = plot.width / CGFloat(stats.count)
+        let boxWidth = slot * 0.5
+        for (i, st) in stats.enumerated() {
+            let cx = slotCenter(plot, i, slot)
+            let s = st.s
+            // Whiskers + caps.
+            var whisk = Path()
+            whisk.move(to: CGPoint(x: cx, y: py(s.lowerWhisker))); whisk.addLine(to: CGPoint(x: cx, y: py(s.q1)))
+            whisk.move(to: CGPoint(x: cx, y: py(s.q3))); whisk.addLine(to: CGPoint(x: cx, y: py(s.upperWhisker)))
+            whisk.move(to: CGPoint(x: cx - boxWidth / 4, y: py(s.upperWhisker))); whisk.addLine(to: CGPoint(x: cx + boxWidth / 4, y: py(s.upperWhisker)))
+            whisk.move(to: CGPoint(x: cx - boxWidth / 4, y: py(s.lowerWhisker))); whisk.addLine(to: CGPoint(x: cx + boxWidth / 4, y: py(s.lowerWhisker)))
+            context.stroke(whisk, with: .color(.secondary), lineWidth: 1)
+            // Box.
+            let box = CGRect(x: cx - boxWidth / 2, y: py(s.q3), width: boxWidth, height: py(s.q1) - py(s.q3))
+            context.fill(Path(box), with: .color(paletteColor(i).opacity(0.65)))
+            context.stroke(Path(box), with: .color(.primary), lineWidth: 1)
+            // Median.
+            var med = Path()
+            med.move(to: CGPoint(x: cx - boxWidth / 2, y: py(s.median)))
+            med.addLine(to: CGPoint(x: cx + boxWidth / 2, y: py(s.median)))
+            context.stroke(med, with: .color(.primary), lineWidth: 1.8)
+            // Mean cross.
+            if s.mean.isFinite {
+                let ym = py(s.mean)
+                var cross = Path()
+                cross.move(to: CGPoint(x: cx - 3, y: ym)); cross.addLine(to: CGPoint(x: cx + 3, y: ym))
+                cross.move(to: CGPoint(x: cx, y: ym - 3)); cross.addLine(to: CGPoint(x: cx, y: ym + 3))
+                context.stroke(cross, with: .color(.primary), lineWidth: 1)
+            }
+            // Outliers.
+            for o in s.outliers {
+                let r: CGFloat = 2.5
+                context.stroke(Path(ellipseIn: CGRect(x: cx - r, y: py(o) - r, width: 2 * r, height: 2 * r)),
+                               with: .color(.secondary), lineWidth: 1)
+            }
+            drawCategoryLabel(context, st.label, cx: cx, plot: plot)
+        }
+
+        drawBrackets(context, plot: plot, laid: laid, slot: slot, count: stats.count) { i in
+            py(stats[i].s.displayRange.hi)
+        }
+    }
+
+    // MARK: - Violin
+
+    private func drawViolins(_ context: GraphicsContext, plot: CGRect,
+                             groups: [ChartSpec.Samples], yLabel: String, brackets: [BarBracket]) {
+        let built = groups.map { (label: $0.label,
+                                  density: KernelDensity.gaussian($0.values),
+                                  s: BoxStats.compute($0.values)) }
+        guard built.contains(where: { $0.density.count > 1 }) else {
+            // Degenerate samples: fall back to a box plot.
+            drawBoxes(context, plot: plot, groups: groups, yLabel: yLabel, brackets: brackets)
+            return
+        }
+        let values = built.flatMap { $0.density.map(\.value) }
+        guard let lo = values.min(), let hi = values.max() else { drawPlaceholder(context, plot: plot); return }
+        let yRange = niceRange(lo, hi)
+        let laid = BracketLayout.assignLevels(brackets)
+        let usableHeight = plot.height - bracketBand(laid)
+        func py(_ v: Double) -> CGFloat {
+            plot.maxY - CGFloat((v - yRange.lo) / (yRange.hi - yRange.lo)) * usableHeight
+        }
+
+        drawYAxis(context, plot: plot, yRange: yRange, yLabel: yLabel, height: usableHeight)
+        drawBaseline(context, plot: plot)
+
+        let slot = plot.width / CGFloat(built.count)
+        let maxHalf = slot * 0.42
+        for (i, g) in built.enumerated() {
+            let cx = slotCenter(plot, i, slot)
+            if g.density.count > 1, let peak = g.density.map(\.density).max(), peak > 0 {
+                var path = Path()
+                let right = g.density.map { CGPoint(x: cx + CGFloat($0.density / peak) * maxHalf, y: py($0.value)) }
+                let left = g.density.reversed().map { CGPoint(x: cx - CGFloat($0.density / peak) * maxHalf, y: py($0.value)) }
+                let outline = right + left
+                path.move(to: outline[0])
+                for p in outline.dropFirst() { path.addLine(to: p) }
+                path.closeSubpath()
+                context.fill(path, with: .color(paletteColor(i).opacity(0.55)))
+                context.stroke(path, with: .color(.secondary), lineWidth: 1)
+            }
+            // Inner box overlay.
+            let s = g.s
+            if s.q1.isFinite && s.q3.isFinite {
+                var stem = Path()
+                stem.move(to: CGPoint(x: cx, y: py(s.lowerWhisker)))
+                stem.addLine(to: CGPoint(x: cx, y: py(s.upperWhisker)))
+                context.stroke(stem, with: .color(.secondary), lineWidth: 1)
+                var iqr = Path()
+                iqr.move(to: CGPoint(x: cx, y: py(s.q1)))
+                iqr.addLine(to: CGPoint(x: cx, y: py(s.q3)))
+                context.stroke(iqr, with: .color(.primary), lineWidth: 4)
+                let r: CGFloat = 2.4
+                context.fill(Path(ellipseIn: CGRect(x: cx - r, y: py(s.median) - r, width: 2 * r, height: 2 * r)),
+                             with: .color(Color(nsColor: .textBackgroundColor)))
+            }
+            drawCategoryLabel(context, g.label, cx: cx, plot: plot)
+        }
+
+        drawBrackets(context, plot: plot, laid: laid, slot: slot, count: built.count) { i in
+            py(built[i].density.map(\.value).max() ?? 0)
+        }
+    }
+
+    // MARK: - Shared category helpers
+
+    private func bracketBand(_ laid: [BarBracket]) -> CGFloat {
+        let levelCount = (laid.map(\.level).max() ?? -1) + 1
+        return laid.isEmpty ? 0 : CGFloat(levelCount) * bracketStep + 14
+    }
+
+    private func slotCenter(_ plot: CGRect, _ i: Int, _ slot: CGFloat) -> CGFloat {
+        plot.minX + slot * (CGFloat(i) + 0.5)
+    }
+
+    private func drawBaseline(_ context: GraphicsContext, plot: CGRect) {
+        var axis = Path()
+        axis.move(to: CGPoint(x: plot.minX, y: plot.maxY))
+        axis.addLine(to: CGPoint(x: plot.maxX, y: plot.maxY))
+        context.stroke(axis, with: .color(.gray), lineWidth: 1)
+    }
+
+    private func drawCategoryLabel(_ context: GraphicsContext, _ label: String, cx: CGFloat, plot: CGRect) {
+        context.draw(
+            Text(label).font(.system(size: 11)).foregroundColor(.secondary),
+            at: CGPoint(x: cx, y: plot.maxY + 14)
+        )
+    }
+
+    /// Significance brackets above the elements (smaller y is higher). `topY(i)`
+    /// returns the y of the top of element i.
+    private func drawBrackets(_ context: GraphicsContext, plot: CGRect, laid: [BarBracket],
+                              slot: CGFloat, count: Int, topY: (Int) -> CGFloat) {
+        for b in laid where (0..<count).contains(b.lo) && (0..<count).contains(b.hi) {
+            let cxA = slotCenter(plot, b.fromIndex, slot)
+            let cxB = slotCenter(plot, b.toIndex, slot)
+            let y = min(topY(b.fromIndex), topY(b.toIndex)) - 10 - CGFloat(b.level) * bracketStep
             let drop: CGFloat = 5
             var bracket = Path()
             bracket.move(to: CGPoint(x: cxA, y: y + drop))
@@ -163,7 +315,6 @@ struct ChartView: View {
         frame.addLine(to: CGPoint(x: plot.maxX, y: plot.maxY))
         context.stroke(frame, with: .color(.gray), lineWidth: 1)
 
-        // X ticks.
         let xticks = ticks(xRange.lo, xRange.hi, 5)
         for t in xticks {
             let x = plot.minX + CGFloat((t - xRange.lo) / (xRange.hi - xRange.lo)) * plot.width
@@ -234,5 +385,15 @@ struct ChartView: View {
         if a >= 1000 || a < 0.01 { return String(format: "%.2g", v) }
         if v == v.rounded() { return String(format: "%.0f", v) }
         return String(format: "%.2f", v)
+    }
+
+    /// Parse a `#RRGGBB` hex string into a SwiftUI `Color`.
+    private func color(_ hex: String) -> Color {
+        var s = hex
+        if s.hasPrefix("#") { s.removeFirst() }
+        guard s.count == 6, let v = Int(s, radix: 16) else { return .gray }
+        return Color(red: Double((v >> 16) & 0xFF) / 255,
+                     green: Double((v >> 8) & 0xFF) / 255,
+                     blue: Double(v & 0xFF) / 255)
     }
 }

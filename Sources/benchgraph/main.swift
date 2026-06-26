@@ -45,6 +45,11 @@ func runDescribe(_ o: Options) throws {
     for column in table.columns {
         print(format(Descriptive.analyze(column), header: "Column: \(column.name)"))
     }
+    if let path = o.figurePath {
+        let req = columnFigure(table, style: o.plotStyle, kind: o.errorBarKind,
+                               title: "Distribution by group", brackets: [])
+        try renderFigure(req, to: path, theme: try o.resolvedTheme())
+    }
 }
 
 func runTTest(_ o: Options) throws {
@@ -65,15 +70,14 @@ func runTTest(_ o: Options) throws {
     print(format(result, header: "\(a.name) vs \(b.name)"))
 
     if let path = o.figurePath {
-        let kind = o.errorBarKind
-        let bars = barGroups(table, kind: kind, limit: 2)
         var brackets: [BarBracket] = []
         if let p = result.value("p (two-tailed)") {
             let mark = Significance.stars(p)
             if !mark.isEmpty { brackets = [BarBracket(fromIndex: 0, toIndex: 1, label: mark)] }
         }
-        try renderFigure(.bars(title: "\(a.name) vs \(b.name)", yLabel: kind.caption,
-                               groups: bars, brackets: brackets), to: path)
+        let req = columnFigure(table, style: o.plotStyle, kind: o.errorBarKind,
+                               title: "\(a.name) vs \(b.name)", brackets: brackets, limit: 2)
+        try renderFigure(req, to: path, theme: try o.resolvedTheme())
     }
 }
 
@@ -85,9 +89,9 @@ func runANOVA(_ o: Options) throws {
     print(format(result, header: "One-way ANOVA across \(groups.count) groups"))
 
     if let path = o.figurePath {
-        let kind = o.errorBarKind
-        let bars = barGroups(table, kind: kind)
-        try renderFigure(.bars(title: "Group means", yLabel: kind.caption, groups: bars, brackets: []), to: path)
+        let req = columnFigure(table, style: o.plotStyle, kind: o.errorBarKind,
+                               title: "Group means", brackets: [])
+        try renderFigure(req, to: path, theme: try o.resolvedTheme())
     }
 }
 
@@ -99,8 +103,6 @@ func runPostHoc(_ o: Options) throws {
     print(format(result, header: "Post-hoc pairwise comparisons (\(groups.count) groups)"))
 
     if let path = o.figurePath {
-        let kind = o.errorBarKind
-        let bars = barGroups(table, kind: kind)
         let names = table.columns.map(\.name)
         var brackets: [BarBracket] = []
         for i in 0..<names.count {
@@ -110,8 +112,9 @@ func runPostHoc(_ o: Options) throws {
                 if !mark.isEmpty { brackets.append(BarBracket(fromIndex: i, toIndex: j, label: mark)) }
             }
         }
-        try renderFigure(.bars(title: "Post-hoc comparisons", yLabel: kind.caption,
-                               groups: bars, brackets: brackets), to: path)
+        let req = columnFigure(table, style: o.plotStyle, kind: o.errorBarKind,
+                               title: "Post-hoc comparisons", brackets: brackets)
+        try renderFigure(req, to: path, theme: try o.resolvedTheme())
     }
 }
 
@@ -161,7 +164,7 @@ func runRegress(_ o: Options) throws {
         try renderFigure(.scatter(
             title: "Linear regression", xLabel: "X", yLabel: "Y",
             series: [.init(name: "data", points: zip(x, y).map { (x: $0, y: $1) })],
-            curve: line, logX: false), to: path)
+            curve: line, logX: false), to: path, theme: try o.resolvedTheme())
     }
 }
 
@@ -184,7 +187,7 @@ func runDoseResponse(_ o: Options) throws {
             title: "Dose-response (4PL)",
             xLabel: "Concentration (log scale)", yLabel: "Response",
             series: [.init(name: "data", points: zip(x, y).map { (x: $0, y: $1) })],
-            curve: curve, logX: true), to: path)
+            curve: curve, logX: true), to: path, theme: try o.resolvedTheme())
     }
 }
 
@@ -225,23 +228,42 @@ func formatNumber(_ v: Double) -> String {
     return String(format: "%.5g", v)
 }
 
-/// Build bar groups (mean ± selected error statistic) for the given columns.
-func barGroups(_ table: DataTable, kind: ErrorBarKind, limit: Int? = nil) -> [SVGRenderer.BarGroup] {
+/// How the column-based commands visualise their groups.
+enum PlotStyle { case bar, box, violin }
+
+/// Build a column figure (bars, box, or violin) for the chosen columns. Bars
+/// show mean ± the selected error statistic; box/violin show the distribution.
+func columnFigure(_ table: DataTable, style: PlotStyle, kind: ErrorBarKind,
+                  title: String, brackets: [BarBracket], limit: Int? = nil) -> FigureExport.Request {
     let cols = limit.map { Array(table.columns.prefix($0)) } ?? table.columns
-    return cols.map { col in
-        let s = Descriptive.summary(col.present)
-        return SVGRenderer.BarGroup(label: col.name, value: s.mean, error: kind.halfLength(s))
+    switch style {
+    case .bar:
+        let groups = cols.map { col -> SVGRenderer.BarGroup in
+            let s = Descriptive.summary(col.present)
+            return SVGRenderer.BarGroup(label: col.name, value: s.mean, error: kind.halfLength(s))
+        }
+        return .bars(title: title, yLabel: kind.caption, groups: groups, brackets: brackets)
+    case .box:
+        let groups = cols.map { SVGRenderer.BoxGroup(label: $0.name, stats: BoxStats.compute($0.present)) }
+        return .box(title: title, yLabel: "Value", groups: groups, brackets: brackets)
+    case .violin:
+        let groups = cols.map { col in
+            SVGRenderer.ViolinGroup(label: col.name,
+                                    density: KernelDensity.gaussian(col.present),
+                                    stats: BoxStats.compute(col.present))
+        }
+        return .violin(title: title, yLabel: "Value", groups: groups, brackets: brackets)
     }
 }
 
 /// Render a figure to `path`, choosing SVG / PDF / PNG / TIFF from the file
 /// extension (shared with the GUI via `FigureExport`).
-func renderFigure(_ req: FigureExport.Request, to path: String) throws {
+func renderFigure(_ req: FigureExport.Request, to path: String, theme: Theme = .default) throws {
     let ext = (path as NSString).pathExtension.lowercased()
     guard FigureExport.supportedExtensions.contains(ext) else {
         throw CLIError("unsupported figure format '.\(ext)'. Use .svg, .pdf, .png, or .tiff")
     }
-    guard let bytes = FigureExport.data(req, pathExtension: ext) else {
+    guard let bytes = FigureExport.data(req, pathExtension: ext, theme: theme) else {
         throw CLIError("failed to render figure")
     }
     do {
@@ -294,6 +316,24 @@ struct Options {
         case "ci", "ci95", "95ci": return .ci95
         default: return .sem
         }
+    }
+
+    /// Figure style for column commands: `--plot bar|box|violin` (default bar).
+    var plotStyle: PlotStyle {
+        switch (named["plot"] ?? "bar").lowercased() {
+        case "box": return .box
+        case "violin": return .violin
+        default: return .bar
+        }
+    }
+
+    /// Journal theme for figures: `--theme <name>` (default Default).
+    func resolvedTheme() throws -> Theme {
+        guard let name = named["theme"] else { return .default }
+        guard let theme = Theme.named(name) else {
+            throw CLIError("unknown theme '\(name)'. Options: \(Theme.presets.map(\.name).joined(separator: ", "))")
+        }
+        return theme
     }
 
     var inputPath: String? { positionals.first }
@@ -350,17 +390,19 @@ func printUsage() {
       --no-header   treat the first row as data, not column names
       --out <path>  also export a figure; format from extension:
                       .svg .pdf .png .tiff
-                      (ttest, anova, posthoc, regress, doseresponse)
+                      (describe, ttest, anova, posthoc, regress, doseresponse)
       --svg <path>  alias for --out with an .svg file
       --error <k>   bar error bars: sd | sem | ci  (default sem)
+      --plot <k>    column figure style: bar | box | violin  (default bar)
+      --theme <k>   journal theme: Default | Nature | Grayscale | Vibrant
 
-    Bar figures (ttest, posthoc) annotate comparisons with significance
-    brackets (****<0.0001, ***<0.001, **<0.01, *<0.05, ns).
+    Column figures (describe, ttest, anova, posthoc) annotate comparisons with
+    significance brackets (****<0.0001, ***<0.001, **<0.01, *<0.05, ns).
 
     EXAMPLES:
-      benchgraph describe data.csv
+      benchgraph describe data.csv --out dist.svg --plot violin
       benchgraph ttest groups.csv --student --out fig.pdf --error ci
-      benchgraph posthoc groups.csv --out posthoc.svg
+      benchgraph posthoc groups.csv --out posthoc.svg --plot box --theme Nature
       benchgraph doseresponse curve.csv --interpolate 50 --svg curve.svg
     """)
 }

@@ -32,9 +32,9 @@ The analysis engine is verified by 39 tests against independent SciPy references
 | Project file (`.benchgraph`, versioned JSON, save/open) | Done |
 | Live provenance (assumptions, warnings, excluded, formula) | Done |
 | XLSX import | Not started |
-| Box / violin plots, journal theme presets | Not started |
-| Significance annotations on graphs, multi-panel layout | Not started |
-| Selectable error bars (SD/SEM/CI), export manifest | Partial / not started |
+| Box / violin plots, journal theme presets | Done |
+| Significance annotations on graphs | Done; multi-panel layout not started |
+| Selectable error bars (SD/SEM/CI) | Done; export manifest not started |
 | Signed + notarized DMG | Not started (needs Apple Developer ID) |
 
 ## MVP

@@ -31,15 +31,40 @@ public struct SVGRenderer {
         }
     }
 
+    /// One box-and-whisker group: a label and its precomputed `BoxStats`.
+    public struct BoxGroup: Sendable {
+        public let label: String
+        public let stats: BoxStats
+        public init(label: String, stats: BoxStats) {
+            self.label = label
+            self.stats = stats
+        }
+    }
+
+    /// One violin group: a kernel-density profile plus box stats for the
+    /// median/quartile overlay drawn inside the violin.
+    public struct ViolinGroup: Sendable {
+        public let label: String
+        public let density: [KernelDensity.Sample]
+        public let stats: BoxStats
+        public init(label: String, density: [KernelDensity.Sample], stats: BoxStats) {
+            self.label = label
+            self.density = density
+            self.stats = stats
+        }
+    }
+
     public let width: Double
     public let height: Double
+    public let theme: Theme
     private let margin = (top: 30.0, right: 30.0, bottom: 55.0, left: 70.0)
     /// Vertical spacing between stacked significance brackets, in points.
     private let bracketStep = 16.0
 
-    public init(width: Double = 520, height: Double = 380) {
+    public init(width: Double = 520, height: Double = 380, theme: Theme = .default) {
         self.width = width
         self.height = height
+        self.theme = theme
     }
 
     private var plotWidth: Double { width - margin.left - margin.right }
@@ -73,14 +98,15 @@ public struct SVGRenderer {
                 let py = yScale.map(p.y)
                 return "\(i == 0 ? "M" : "L")\(fmt(px)),\(fmt(py))"
             }.joined(separator: " ")
-            body += "  <path d=\"\(d)\" fill=\"none\" stroke=\"#D1495B\" stroke-width=\"2\"/>\n"
+            body += "  <path d=\"\(d)\" fill=\"none\" stroke=\"\(theme.curveColor)\" stroke-width=\"2\"/>\n"
         }
 
-        for s in series {
+        for (si, s) in series.enumerated() {
+            let color = s.color == "#2C6FBB" ? theme.color(at: si) : s.color
             for p in s.points {
                 let px = xScale.map(logX ? log10(Swift.max(p.x, 1e-12)) : p.x)
                 let py = yScale.map(p.y)
-                body += "  <circle cx=\"\(fmt(px))\" cy=\"\(fmt(py))\" r=\"4\" fill=\"\(s.color)\" stroke=\"#ffffff\" stroke-width=\"1\"/>\n"
+                body += "  <circle cx=\"\(fmt(px))\" cy=\"\(fmt(py))\" r=\"4\" fill=\"\(color)\" stroke=\"\(theme.backgroundColor)\" stroke-width=\"1\"/>\n"
             }
         }
         return document(body)
@@ -97,52 +123,204 @@ public struct SVGRenderer {
         guard !groups.isEmpty else { return emptyDocument(title: title) }
         let maxValue = groups.map { $0.value + $0.error }.max() ?? 1
         let yMax = maxValue > 0 ? maxValue * 1.1 : 1
-        // Reserve a band at the top of the plot for significance brackets so
-        // they never collide with the tallest bar.
         let laid = BracketLayout.assignLevels(brackets)
-        let levelCount = (laid.map(\.level).max() ?? -1) + 1
-        let band = laid.isEmpty ? 0 : Double(levelCount) * bracketStep + 14
-        let yScale = Scale(domainMin: 0, domainMax: yMax, rangeMin: margin.top + plotHeight, rangeMax: margin.top + band)
+        let yScale = categoryYScale(domainMin: 0, domainMax: yMax, brackets: laid)
 
         var body = title.isEmpty ? "" : titleElement(title)
         body += yAxis(label: yLabel, scale: yScale)
-        body += "  <line x1=\"\(fmt(margin.left))\" y1=\"\(fmt(margin.top + plotHeight))\" x2=\"\(fmt(margin.left + plotWidth))\" y2=\"\(fmt(margin.top + plotHeight))\" stroke=\"#333\" stroke-width=\"1\"/>\n"
+        body += "  <line x1=\"\(fmt(margin.left))\" y1=\"\(fmt(margin.top + plotHeight))\" x2=\"\(fmt(margin.left + plotWidth))\" y2=\"\(fmt(margin.top + plotHeight))\" stroke=\"\(theme.axisColor)\" stroke-width=\"1\"/>\n"
 
         let slot = plotWidth / Double(groups.count)
         let barWidth = slot * 0.6
         for (i, g) in groups.enumerated() {
-            let cx = margin.left + slot * (Double(i) + 0.5)
+            let cx = slotCenter(i, slot: slot)
             let barX = cx - barWidth / 2
             let barY = yScale.map(g.value)
             let barH = (margin.top + plotHeight) - barY
-            body += "  <rect x=\"\(fmt(barX))\" y=\"\(fmt(barY))\" width=\"\(fmt(barWidth))\" height=\"\(fmt(barH))\" fill=\"\(g.color)\"/>\n"
-            // Error bar.
+            let fill = g.color == "#2C6FBB" ? theme.primaryColor : g.color
+            body += "  <rect x=\"\(fmt(barX))\" y=\"\(fmt(barY))\" width=\"\(fmt(barWidth))\" height=\"\(fmt(barH))\" fill=\"\(fill)\"/>\n"
             if g.error > 0 {
                 let top = yScale.map(g.value + g.error)
                 let bottom = yScale.map(g.value - g.error)
-                body += "  <line x1=\"\(fmt(cx))\" y1=\"\(fmt(top))\" x2=\"\(fmt(cx))\" y2=\"\(fmt(bottom))\" stroke=\"#333\" stroke-width=\"1.5\"/>\n"
-                body += "  <line x1=\"\(fmt(cx - 6))\" y1=\"\(fmt(top))\" x2=\"\(fmt(cx + 6))\" y2=\"\(fmt(top))\" stroke=\"#333\" stroke-width=\"1.5\"/>\n"
+                body += line(cx, top, cx, bottom, width: 1.5)
+                body += line(cx - 6, top, cx + 6, top, width: 1.5)
             }
-            // Category label.
-            body += "  <text x=\"\(fmt(cx))\" y=\"\(fmt(margin.top + plotHeight + 18))\" font-size=\"12\" text-anchor=\"middle\" fill=\"#333\">\(escape(g.label))</text>\n"
+            body += categoryLabel(g.label, cx: cx)
         }
 
-        // Significance brackets above the bars (smaller y is higher here).
-        for b in laid where groups.indices.contains(b.lo) && groups.indices.contains(b.hi) {
-            let cxA = margin.left + slot * (Double(b.fromIndex) + 0.5)
-            let cxB = margin.left + slot * (Double(b.toIndex) + 0.5)
-            let topA = yScale.map(groups[b.fromIndex].value + groups[b.fromIndex].error)
-            let topB = yScale.map(groups[b.toIndex].value + groups[b.toIndex].error)
-            let y = Swift.min(topA, topB) - 10 - Double(b.level) * bracketStep
-            let drop = 5.0
-            body += "  <line x1=\"\(fmt(cxA))\" y1=\"\(fmt(y))\" x2=\"\(fmt(cxB))\" y2=\"\(fmt(y))\" stroke=\"#333\" stroke-width=\"1\"/>\n"
-            body += "  <line x1=\"\(fmt(cxA))\" y1=\"\(fmt(y))\" x2=\"\(fmt(cxA))\" y2=\"\(fmt(y + drop))\" stroke=\"#333\" stroke-width=\"1\"/>\n"
-            body += "  <line x1=\"\(fmt(cxB))\" y1=\"\(fmt(y))\" x2=\"\(fmt(cxB))\" y2=\"\(fmt(y + drop))\" stroke=\"#333\" stroke-width=\"1\"/>\n"
-            if !b.label.isEmpty {
-                body += "  <text x=\"\(fmt((cxA + cxB) / 2))\" y=\"\(fmt(y - 3))\" font-size=\"13\" text-anchor=\"middle\" fill=\"#222\">\(escape(b.label))</text>\n"
-            }
+        body += bracketLayer(laid, slot: slot, count: groups.count) { i in
+            yScale.map(groups[i].value + groups[i].error)
         }
         return document(body)
+    }
+
+    // MARK: - Box-and-whisker
+
+    public func boxPlot(
+        title: String,
+        yLabel: String,
+        groups: [BoxGroup],
+        brackets: [BarBracket] = []
+    ) -> String {
+        guard !groups.isEmpty else { return emptyDocument(title: title) }
+        let los = groups.map { $0.stats.displayRange.lo }
+        let his = groups.map { $0.stats.displayRange.hi }
+        guard let lo = los.min(), let hi = his.max(), lo.isFinite, hi.isFinite else {
+            return emptyDocument(title: title)
+        }
+        let (dMin, dMax) = paddedDomain(lo, hi)
+        let laid = BracketLayout.assignLevels(brackets)
+        let yScale = categoryYScale(domainMin: dMin, domainMax: dMax, brackets: laid)
+
+        var body = title.isEmpty ? "" : titleElement(title)
+        body += yAxis(label: yLabel, scale: yScale)
+        body += baseline()
+
+        let slot = plotWidth / Double(groups.count)
+        let boxWidth = slot * 0.5
+        for (i, g) in groups.enumerated() {
+            let cx = slotCenter(i, slot: slot)
+            let s = g.stats
+            let color = theme.color(at: i)
+            let yQ1 = yScale.map(s.q1), yQ3 = yScale.map(s.q3)
+            let yMed = yScale.map(s.median)
+            let yLow = yScale.map(s.lowerWhisker), yHigh = yScale.map(s.upperWhisker)
+
+            // Whisker stem + caps.
+            body += line(cx, yLow, cx, yQ1, width: 1)
+            body += line(cx, yQ3, cx, yHigh, width: 1)
+            body += line(cx - boxWidth / 4, yHigh, cx + boxWidth / 4, yHigh, width: 1)
+            body += line(cx - boxWidth / 4, yLow, cx + boxWidth / 4, yLow, width: 1)
+            // Box (IQR).
+            body += "  <rect x=\"\(fmt(cx - boxWidth / 2))\" y=\"\(fmt(yQ3))\" width=\"\(fmt(boxWidth))\" height=\"\(fmt(yQ1 - yQ3))\" fill=\"\(color)\" fill-opacity=\"0.65\" stroke=\"\(theme.axisColor)\" stroke-width=\"1\"/>\n"
+            // Median line.
+            body += line(cx - boxWidth / 2, yMed, cx + boxWidth / 2, yMed, width: 1.8)
+            // Mean marker (small "+").
+            if s.mean.isFinite {
+                let yMean = yScale.map(s.mean)
+                body += line(cx - 3, yMean, cx + 3, yMean, width: 1, color: theme.textColor)
+                body += line(cx, yMean - 3, cx, yMean + 3, width: 1, color: theme.textColor)
+            }
+            // Outliers.
+            for o in s.outliers {
+                body += "  <circle cx=\"\(fmt(cx))\" cy=\"\(fmt(yScale.map(o)))\" r=\"2.5\" fill=\"none\" stroke=\"\(theme.axisColor)\" stroke-width=\"1\"/>\n"
+            }
+            body += categoryLabel(g.label, cx: cx)
+        }
+
+        body += bracketLayer(laid, slot: slot, count: groups.count) { i in
+            yScale.map(groups[i].stats.displayRange.hi)
+        }
+        return document(body)
+    }
+
+    // MARK: - Violin
+
+    public func violinPlot(
+        title: String,
+        yLabel: String,
+        groups: [ViolinGroup],
+        brackets: [BarBracket] = []
+    ) -> String {
+        let drawable = groups.filter { $0.density.count > 1 }
+        guard !drawable.isEmpty else {
+            // No density to draw (tiny/degenerate samples): fall back to a box.
+            return boxPlot(title: title, yLabel: yLabel,
+                           groups: groups.map { BoxGroup(label: $0.label, stats: $0.stats) },
+                           brackets: brackets)
+        }
+        let values = groups.flatMap { $0.density.map(\.value) }
+        guard let lo = values.min(), let hi = values.max() else { return emptyDocument(title: title) }
+        let (dMin, dMax) = paddedDomain(lo, hi)
+        let laid = BracketLayout.assignLevels(brackets)
+        let yScale = categoryYScale(domainMin: dMin, domainMax: dMax, brackets: laid)
+
+        var body = title.isEmpty ? "" : titleElement(title)
+        body += yAxis(label: yLabel, scale: yScale)
+        body += baseline()
+
+        let slot = plotWidth / Double(groups.count)
+        let maxHalf = slot * 0.42
+        for (i, g) in groups.enumerated() {
+            let cx = slotCenter(i, slot: slot)
+            let color = theme.color(at: i)
+            guard g.density.count > 1, let peak = g.density.map(\.density).max(), peak > 0 else {
+                continue
+            }
+            // Symmetric outline: up the right edge, back down the left edge.
+            let right = g.density.map { (x: cx + ($0.density / peak) * maxHalf, y: yScale.map($0.value)) }
+            let left = g.density.reversed().map { (x: cx - ($0.density / peak) * maxHalf, y: yScale.map($0.value)) }
+            let path = (right + left).enumerated().map { idx, p in
+                "\(idx == 0 ? "M" : "L")\(fmt(p.x)),\(fmt(p.y))"
+            }.joined(separator: " ") + " Z"
+            body += "  <path d=\"\(path)\" fill=\"\(color)\" fill-opacity=\"0.55\" stroke=\"\(theme.axisColor)\" stroke-width=\"1\"/>\n"
+
+            // Inner box overlay (IQR bar + median dot).
+            let s = g.stats
+            if s.q1.isFinite && s.q3.isFinite {
+                body += line(cx, yScale.map(s.lowerWhisker), cx, yScale.map(s.upperWhisker), width: 1)
+                body += line(cx, yScale.map(s.q1), cx, yScale.map(s.q3), width: 4, color: theme.textColor)
+                body += "  <circle cx=\"\(fmt(cx))\" cy=\"\(fmt(yScale.map(s.median)))\" r=\"2.4\" fill=\"\(theme.backgroundColor)\"/>\n"
+            }
+            body += categoryLabel(g.label, cx: cx)
+        }
+
+        body += bracketLayer(laid, slot: slot, count: groups.count) { i in
+            yScale.map(groups[i].density.map(\.value).max() ?? 0)
+        }
+        return document(body)
+    }
+
+    // MARK: - Shared category-plot helpers
+
+    /// A y scale that reserves a band at the top for significance brackets so
+    /// they never collide with the tallest element.
+    private func categoryYScale(domainMin: Double, domainMax: Double, brackets: [BarBracket]) -> Scale {
+        let levelCount = (brackets.map(\.level).max() ?? -1) + 1
+        let band = brackets.isEmpty ? 0 : Double(levelCount) * bracketStep + 14
+        return Scale(domainMin: domainMin, domainMax: domainMax,
+                     rangeMin: margin.top + plotHeight, rangeMax: margin.top + band)
+    }
+
+    private func slotCenter(_ i: Int, slot: Double) -> Double { margin.left + slot * (Double(i) + 0.5) }
+
+    private func baseline() -> String {
+        line(margin.left, margin.top + plotHeight, margin.left + plotWidth, margin.top + plotHeight, width: 1)
+    }
+
+    private func categoryLabel(_ label: String, cx: Double) -> String {
+        "  <text x=\"\(fmt(cx))\" y=\"\(fmt(margin.top + plotHeight + 18))\" font-size=\"12\" text-anchor=\"middle\" fill=\"\(theme.axisColor)\">\(escape(label))</text>\n"
+    }
+
+    /// Significance brackets above the elements. `topY(i)` returns the y (px) of
+    /// the top of element i; smaller y is higher on the page.
+    private func bracketLayer(_ laid: [BarBracket], slot: Double, count: Int, topY: (Int) -> Double) -> String {
+        var body = ""
+        for b in laid where (0..<count).contains(b.lo) && (0..<count).contains(b.hi) {
+            let cxA = slotCenter(b.fromIndex, slot: slot)
+            let cxB = slotCenter(b.toIndex, slot: slot)
+            let y = Swift.min(topY(b.fromIndex), topY(b.toIndex)) - 10 - Double(b.level) * bracketStep
+            let drop = 5.0
+            body += line(cxA, y, cxB, y, width: 1)
+            body += line(cxA, y, cxA, y + drop, width: 1)
+            body += line(cxB, y, cxB, y + drop, width: 1)
+            if !b.label.isEmpty {
+                body += "  <text x=\"\(fmt((cxA + cxB) / 2))\" y=\"\(fmt(y - 3))\" font-size=\"13\" text-anchor=\"middle\" fill=\"\(theme.textColor)\">\(escape(b.label))</text>\n"
+            }
+        }
+        return body
+    }
+
+    private func line(_ x1: Double, _ y1: Double, _ x2: Double, _ y2: Double,
+                      width: Double, color: String? = nil) -> String {
+        "  <line x1=\"\(fmt(x1))\" y1=\"\(fmt(y1))\" x2=\"\(fmt(x2))\" y2=\"\(fmt(y2))\" stroke=\"\(color ?? theme.axisColor)\" stroke-width=\"\(fmt(width))\"/>\n"
+    }
+
+    /// A modest symmetric pad around a data range so glyphs aren't clipped.
+    private func paddedDomain(_ lo: Double, _ hi: Double) -> (Double, Double) {
+        if lo == hi { let pad = Swift.abs(lo) * 0.1 + 1; return (lo - pad, hi + pad) }
+        let pad = (hi - lo) * 0.08
+        return (lo - pad, hi + pad)
     }
 
     // MARK: - Shared scaffolding
@@ -164,21 +342,18 @@ public struct SVGRenderer {
 
     private func axes(xLabel: String, yLabel: String, title: String, xScale: Scale, yScale: Scale, logX: Bool) -> String {
         var s = title.isEmpty ? "" : titleElement(title)
-        // Axes lines.
         let x0 = margin.left, x1 = margin.left + plotWidth
         let yBottom = margin.top + plotHeight
-        s += "  <line x1=\"\(fmt(x0))\" y1=\"\(fmt(yBottom))\" x2=\"\(fmt(x1))\" y2=\"\(fmt(yBottom))\" stroke=\"#333\" stroke-width=\"1\"/>\n"
-        s += "  <line x1=\"\(fmt(x0))\" y1=\"\(fmt(margin.top))\" x2=\"\(fmt(x0))\" y2=\"\(fmt(yBottom))\" stroke=\"#333\" stroke-width=\"1\"/>\n"
-        // X ticks.
+        s += line(x0, yBottom, x1, yBottom, width: 1)
+        s += line(x0, margin.top, x0, yBottom, width: 1)
         for t in xScale.ticks() {
             let px = xScale.map(t)
             let label = logX ? fmtTick(pow(10, t)) : fmtTick(t)
-            s += "  <line x1=\"\(fmt(px))\" y1=\"\(fmt(yBottom))\" x2=\"\(fmt(px))\" y2=\"\(fmt(yBottom + 5))\" stroke=\"#333\"/>\n"
-            s += "  <text x=\"\(fmt(px))\" y=\"\(fmt(yBottom + 18))\" font-size=\"11\" text-anchor=\"middle\" fill=\"#333\">\(label)</text>\n"
+            s += "  <line x1=\"\(fmt(px))\" y1=\"\(fmt(yBottom))\" x2=\"\(fmt(px))\" y2=\"\(fmt(yBottom + 5))\" stroke=\"\(theme.axisColor)\"/>\n"
+            s += "  <text x=\"\(fmt(px))\" y=\"\(fmt(yBottom + 18))\" font-size=\"11\" text-anchor=\"middle\" fill=\"\(theme.axisColor)\">\(label)</text>\n"
         }
         s += yAxis(label: yLabel, scale: yScale)
-        // X axis label.
-        s += "  <text x=\"\(fmt(margin.left + plotWidth / 2))\" y=\"\(fmt(height - 12))\" font-size=\"13\" text-anchor=\"middle\" fill=\"#333\">\(escape(xLabel))</text>\n"
+        s += "  <text x=\"\(fmt(margin.left + plotWidth / 2))\" y=\"\(fmt(height - 12))\" font-size=\"13\" text-anchor=\"middle\" fill=\"\(theme.axisColor)\">\(escape(xLabel))</text>\n"
         return s
     }
 
@@ -187,23 +362,23 @@ public struct SVGRenderer {
         let x0 = margin.left
         for t in scale.ticks() {
             let py = scale.map(t)
-            s += "  <line x1=\"\(fmt(x0 - 5))\" y1=\"\(fmt(py))\" x2=\"\(fmt(x0))\" y2=\"\(fmt(py))\" stroke=\"#333\"/>\n"
-            s += "  <text x=\"\(fmt(x0 - 9))\" y=\"\(fmt(py + 4))\" font-size=\"11\" text-anchor=\"end\" fill=\"#333\">\(fmtTick(t))</text>\n"
+            s += "  <line x1=\"\(fmt(x0 - 5))\" y1=\"\(fmt(py))\" x2=\"\(fmt(x0))\" y2=\"\(fmt(py))\" stroke=\"\(theme.axisColor)\"/>\n"
+            s += "  <text x=\"\(fmt(x0 - 9))\" y=\"\(fmt(py + 4))\" font-size=\"11\" text-anchor=\"end\" fill=\"\(theme.axisColor)\">\(fmtTick(t))</text>\n"
         }
         let cy = margin.top + plotHeight / 2
-        s += "  <text x=\"18\" y=\"\(fmt(cy))\" font-size=\"13\" text-anchor=\"middle\" fill=\"#333\" transform=\"rotate(-90 18 \(fmt(cy)))\">\(escape(label))</text>\n"
+        s += "  <text x=\"18\" y=\"\(fmt(cy))\" font-size=\"13\" text-anchor=\"middle\" fill=\"\(theme.axisColor)\" transform=\"rotate(-90 18 \(fmt(cy)))\">\(escape(label))</text>\n"
         return s
     }
 
     private func titleElement(_ title: String) -> String {
-        "  <text x=\"\(fmt(width / 2))\" y=\"20\" font-size=\"15\" font-weight=\"bold\" text-anchor=\"middle\" fill=\"#222\">\(escape(title))</text>\n"
+        "  <text x=\"\(fmt(width / 2))\" y=\"20\" font-size=\"15\" font-weight=\"bold\" text-anchor=\"middle\" fill=\"\(theme.textColor)\">\(escape(title))</text>\n"
     }
 
     private func document(_ body: String) -> String {
         """
         <?xml version="1.0" encoding="UTF-8"?>
-        <svg xmlns="http://www.w3.org/2000/svg" width="\(fmt(width))" height="\(fmt(height))" viewBox="0 0 \(fmt(width)) \(fmt(height))" font-family="Helvetica, Arial, sans-serif">
-          <rect width="\(fmt(width))" height="\(fmt(height))" fill="#ffffff"/>
+        <svg xmlns="http://www.w3.org/2000/svg" width="\(fmt(width))" height="\(fmt(height))" viewBox="0 0 \(fmt(width)) \(fmt(height))" font-family="\(theme.fontFamily)">
+          <rect width="\(fmt(width))" height="\(fmt(height))" fill="\(theme.backgroundColor)"/>
         \(body)</svg>
         """
     }
