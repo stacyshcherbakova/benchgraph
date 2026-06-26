@@ -4,6 +4,14 @@ Source check date: 2026-05-28.
 
 Working name: BenchGraph. Provisional.
 
+## Current Status
+
+**Stage: MVP build phase, working toward V1.** The analysis, graphs, export, and
+provenance core of the MVP is essentially complete. Remaining MVP gaps:
+XLSX import, an editable data table + undo/redo, multi-panel layout + export
+manifest, copy-as-vector, residual plots, and a signed/notarized DMG. See the
+ticked [MVP Scope](#mvp-scope) and [Version Roadmap](#version-roadmap) below.
+
 ## Product Thesis
 
 Build a local-first macOS desktop app for bench scientists who need a fast path from experimental data to trustworthy statistics and publication-quality figures.
@@ -14,7 +22,8 @@ Do not clone every GraphPad Prism feature. Build the smallest credible workflow 
 
 As of the current build, a Swift implementation exists: a tested engine
 (`BenchGraphKit`), a `benchgraph` CLI, and a SwiftUI app (`BenchGraph.app`).
-The analysis engine is verified by 39 tests against independent SciPy references.
+The suite has 56 tests (39 SciPy-validated stats fixtures plus figure-rendering
+and project-file tests).
 
 | MVP area | Status |
 | --- | --- |
@@ -27,7 +36,7 @@ The analysis engine is verified by 39 tests against independent SciPy references
 | Pearson / Spearman, linear regression | Done |
 | 4PL dose-response + standard-curve interpolation | Done |
 | Normality test (D'Agostino-Pearson) | Done |
-| Graphs: scatter, bar+error, XY, dose-response curve | Done |
+| Graphs: scatter, bar+error, box, violin, XY, dose-response curve | Done |
 | Export: SVG, PDF, PNG, TIFF | Done |
 | Project file (`.benchgraph`, versioned JSON, save/open) | Done |
 | Live provenance (assumptions, warnings, excluded, formula) | Done |
@@ -51,36 +60,36 @@ Apple's direct macOS distribution path requires Developer ID signing, notarizati
 
 ### MVP Scope
 
-- Native macOS document app with one project file.
-- Local-first storage. No account required for core use.
+- [x] Native macOS document app with one project file.
+- [x] Local-first storage. No account required for core use.
 - Data entry and import:
-  - Paste from Excel/Numbers.
-  - CSV/TSV import.
-  - Basic XLSX import if feasible without large dependency risk.
-  - Column, grouped, and XY table templates.
+  - [x] Paste from Excel/Numbers.
+  - [x] CSV/TSV import.
+  - [ ] Basic XLSX import if feasible without large dependency risk.
+  - [x] Column, grouped, and XY table templates. *(partial: grouped is parsed but not a first-class template)*
 - Analysis:
-  - Descriptive statistics.
-  - Paired/unpaired t test.
-  - One-way ANOVA with common multiple-comparison corrections.
-  - Mann-Whitney and Wilcoxon.
-  - Pearson/Spearman correlation.
-  - Linear regression.
-  - Nonlinear regression for standard curve and 4-parameter logistic dose-response.
-  - Normality checks and residual plots where relevant.
+  - [x] Descriptive statistics.
+  - [x] Paired/unpaired t test.
+  - [x] One-way ANOVA with common multiple-comparison corrections.
+  - [x] Mann-Whitney and Wilcoxon.
+  - [x] Pearson/Spearman correlation.
+  - [x] Linear regression.
+  - [x] Nonlinear regression for standard curve and 4-parameter logistic dose-response.
+  - [x] Normality checks and residual plots where relevant. *(partial: normality done; no residual plot yet)*
 - Graphs:
-  - Scatter, column/bar, box, violin, line/XY, dose-response curve.
-  - Error bars: SD, SEM, CI.
-  - Significance annotations linked to analysis results.
-  - Theme presets for common journal-style output.
+  - [x] Scatter, column/bar, box, violin, line/XY, dose-response curve.
+  - [x] Error bars: SD, SEM, CI.
+  - [x] Significance annotations linked to analysis results.
+  - [x] Theme presets for common journal-style output.
 - Layout and export:
-  - Single graph export: PDF, SVG, PNG, TIFF.
-  - Copy as vector where possible.
-  - Simple multi-panel layout with labels A/B/C.
-  - Export manifest that records data source, analysis options, and app version.
+  - [x] Single graph export: PDF, SVG, PNG, TIFF.
+  - [ ] Copy as vector where possible.
+  - [ ] Simple multi-panel layout with labels A/B/C.
+  - [ ] Export manifest that records data source, analysis options, and app version.
 - Provenance:
-  - Recompute analyses when source data or options change.
-  - Show assumptions, excluded values, model formula, P value adjustment, CI level, and warnings.
-  - Keep analysis outputs linked to exact table and graph.
+  - [x] Recompute analyses when source data or options change.
+  - [x] Show assumptions, excluded values, model formula, P value adjustment, CI level, and warnings.
+  - [x] Keep analysis outputs linked to exact table and graph.
 
 ### Out Of Scope For MVP
 
@@ -97,15 +106,15 @@ Apple's direct macOS distribution path requires Developer ID signing, notarizati
 
 The product is credible only if it has:
 
-- A polished Mac-native data table and graph editing experience.
-- Accurate calculations for included tests, with independent test fixtures.
-- Dose-response and standard-curve workflows.
-- Robust import/paste from spreadsheet data.
-- High-quality vector export.
-- Persistent project files that reopen exactly.
-- Linked data -> analysis -> graph updates.
-- Clear warnings for invalid assumptions, missing data, unequal group sizes, and ambiguous repeated-measures structure.
-- Undo/redo across table, analysis, and graph edits.
+- [x] A polished Mac-native data table and graph editing experience. *(partial: read-only parsed preview + raw-text editor; no editable spreadsheet grid)*
+- [x] Accurate calculations for included tests, with independent test fixtures.
+- [x] Dose-response and standard-curve workflows.
+- [x] Robust import/paste from spreadsheet data. *(partial: CSV/TSV/paste done; XLSX not yet)*
+- [x] High-quality vector export.
+- [x] Persistent project files that reopen exactly.
+- [x] Linked data -> analysis -> graph updates.
+- [x] Clear warnings for invalid assumptions, missing data, unequal group sizes, and ambiguous repeated-measures structure.
+- [ ] Undo/redo across table, analysis, and graph edits.
 
 ## Core Workflows
 
@@ -149,6 +158,8 @@ The product is credible only if it has:
 
 ### V1: Local Scientific Figure Workbench
 
+**Status: In progress (active target) — MVP scope not yet complete.**
+
 Target: solo researchers and small labs.
 
 - Complete MVP scope.
@@ -162,6 +173,8 @@ Target: solo researchers and small labs.
 - Basic sample-size/power calculators.
 
 ### V2: Advanced Analysis And Team Workflows
+
+**Status: Not started.**
 
 Target: labs, core facilities, and small biotech teams.
 
@@ -177,6 +190,8 @@ Target: labs, core facilities, and small biotech teams.
 - Better audit log for data edits and analysis option changes.
 
 ### V3: Institutional And Regulated Workflows
+
+**Status: Not started.**
 
 Target: larger biotech/pharma/clinical research groups.
 

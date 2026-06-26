@@ -29,8 +29,10 @@ end-to-end: **import data → run an analysis → export a figure**.
     (via a regularized incomplete beta), so p-values depend on no external library.
   - **Export**: a deterministic, text-based `SVGRenderer`, plus a CoreGraphics
     renderer for **PDF, PNG, and TIFF** — scatter/XY plots with fitted curves
-    and log axes, and bar charts with error bars. A `FigureExport` helper picks
-    the format by file extension.
+    and log axes, bar charts with selectable SD/SEM/CI error bars, **box and
+    violin plots**, **significance brackets** linked to analysis p-values, and
+    **journal theme presets**. A `FigureExport` helper picks the format by file
+    extension.
   - **Project files**: a versioned, human-readable JSON `ProjectDocument`
     (`.benchgraph`) that round-trips the data and analysis spec so a project
     reopens exactly.
@@ -53,7 +55,7 @@ CLI, and app on top of it.
 
 ```bash
 swift build                 # build the library + CLI
-./scripts/test.sh           # run the test suite (39 golden-value tests)
+./scripts/test.sh           # run the test suite (56 tests)
 ```
 
 `scripts/test.sh` wraps `swift test` with the framework paths needed when only the
@@ -69,7 +71,8 @@ open BenchGraph.app         # launch it
 
 The app opens with a sample dose-response dataset loaded. Paste your own CSV/TSV
 on the left, choose an analysis from the picker, and the results panel and chart
-update live. Use **Export figure…** to save the current chart as SVG.
+update live. Switch column charts between bars/box/violin, pick a journal theme,
+and use **Export figure…** to save the current chart as SVG, PDF, PNG, or TIFF.
 
 ### CLI examples
 
