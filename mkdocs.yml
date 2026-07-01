@@ -1,6 +1,6 @@
 site_name: BenchGraph Docs
 site_description: Research and product planning for a Mac-native, Prism-like scientific analysis and figure app.
-site_url: https://stacyshcherbakova.github.io/prism-app-playground/
+site_url: https://stacyshcherbakova.github.io/benchgraph/
 docs_dir: docs
 
 theme:
