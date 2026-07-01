@@ -1,0 +1,7 @@
+/* Keep short code tokens (e.g. target/product names like `BenchGraphKit`)
+   on a single line inside tables. Material's default `word-break: break-word`
+   on inline code otherwise splits them when a wide column squeezes the cell. */
+.md-typeset table td code,
+.md-typeset table th code {
+  white-space: nowrap;
+}

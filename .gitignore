@@ -11,3 +11,6 @@
 
 # Built app bundle
 /BenchGraph.app/
+
+# Claude Code local config
+/.claude/

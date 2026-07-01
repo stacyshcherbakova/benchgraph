@@ -2,8 +2,6 @@
 
 Source check date: 2026-05-28.
 
-Working name: BenchGraph. Provisional.
-
 ## Summary
 
 The market is split between:

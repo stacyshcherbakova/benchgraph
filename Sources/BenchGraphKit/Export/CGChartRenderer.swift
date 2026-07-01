@@ -478,9 +478,7 @@ public struct CGChartRenderer {
     }
 
     private func ticks(_ lo: Double, _ hi: Double, _ count: Int = 5) -> [Double] {
-        guard hi > lo else { return [lo] }
-        let step = (hi - lo) / Double(count)
-        return (0...count).map { lo + Double($0) * step }
+        AxisTicks.nice(lo, hi, count: count)
     }
 
     private func fmtTick(_ v: Double) -> String {

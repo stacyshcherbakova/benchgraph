@@ -4,21 +4,51 @@ import BenchGraphKit
 
 /// The analyses the GUI exposes, mapped to the table shape each one needs.
 enum Analysis: String, CaseIterable, Identifiable {
-    case descriptive   = "Descriptive statistics"
-    case tTestWelch    = "Unpaired t test (Welch)"
-    case tTestStudent  = "Unpaired t test (Student)"
-    case tTestPaired   = "Paired t test"
-    case anova         = "One-way ANOVA"
-    case postHoc       = "ANOVA post-hoc (pairwise)"
-    case mannWhitney   = "Mann-Whitney U"
-    case wilcoxon      = "Wilcoxon signed-rank"
-    case normality     = "Normality (D'Agostino-Pearson)"
-    case pearson       = "Pearson correlation"
-    case spearman      = "Spearman correlation"
-    case linear        = "Linear regression"
-    case fourPL        = "4PL dose-response"
+    // Raw values are STABLE persistence keys written into `.benchgraph` files.
+    // They are decoupled from the display label (see `label`) so the UI wording
+    // can be re-worded without breaking older saved projects.
+    case descriptive   = "descriptive"
+    case tTestWelch    = "ttest.welch"
+    case tTestStudent  = "ttest.student"
+    case tTestPaired   = "ttest.paired"
+    case anova         = "anova.oneway"
+    case postHoc       = "anova.posthoc"
+    case mannWhitney   = "mannwhitney"
+    case wilcoxon      = "wilcoxon"
+    case normality     = "normality"
+    case pearson       = "correlation.pearson"
+    case spearman      = "correlation.spearman"
+    case linear        = "regression.linear"
+    case fourPL        = "doseresponse.4pl"
 
     var id: String { rawValue }
+
+    /// Human-readable label shown in the picker and used as a chart title.
+    /// Safe to re-word freely; it is not what gets persisted.
+    var label: String {
+        switch self {
+        case .descriptive:  return "Descriptive statistics"
+        case .tTestWelch:   return "Unpaired t test (Welch)"
+        case .tTestStudent: return "Unpaired t test (Student)"
+        case .tTestPaired:  return "Paired t test"
+        case .anova:        return "One-way ANOVA"
+        case .postHoc:      return "ANOVA post-hoc (pairwise)"
+        case .mannWhitney:  return "Mann-Whitney U"
+        case .wilcoxon:     return "Wilcoxon signed-rank"
+        case .normality:    return "Normality (D'Agostino-Pearson)"
+        case .pearson:      return "Pearson correlation"
+        case .spearman:     return "Spearman correlation"
+        case .linear:       return "Linear regression"
+        case .fourPL:       return "4PL dose-response"
+        }
+    }
+
+    /// Resolve a persisted identifier back to an analysis. Falls back to matching
+    /// the display label, so projects written by older builds (which stored the
+    /// label instead of the stable key) still restore their analysis.
+    static func restore(from stored: String) -> Analysis? {
+        Analysis(rawValue: stored) ?? allCases.first { $0.label == stored }
+    }
 
     /// Whether this analysis reads a Column table or an XY table.
     var tableKind: TableKind {
@@ -262,7 +292,7 @@ final class AppModel: ObservableObject {
 
     /// Restore a loaded project, recomputing the result and chart.
     func apply(_ doc: ProjectDocument) {
-        if let restored = Analysis(rawValue: doc.analysisName) { analysis = restored }
+        if let restored = Analysis.restore(from: doc.analysisName) { analysis = restored }
         hasHeader = doc.hasHeader
         rawText = doc.data   // didSet triggers recompute with the final state
     }
@@ -274,26 +304,26 @@ final class AppModel: ObservableObject {
             return nil
         case let .scatter(points, curve, logX, xLabel, yLabel):
             return .scatter(
-                title: analysis.rawValue, xLabel: xLabel, yLabel: yLabel,
+                title: analysis.label, xLabel: xLabel, yLabel: yLabel,
                 series: [.init(name: "data", points: points.map { (x: $0.x, y: $0.y) })],
                 curve: curve?.map { (x: $0.x, y: $0.y) },
                 logX: logX
             )
         case let .bars(groups, yLabel, brackets):
             return .bars(
-                title: analysis.rawValue, yLabel: yLabel,
+                title: analysis.label, yLabel: yLabel,
                 groups: groups.map { .init(label: $0.label, value: $0.value, error: $0.error) },
                 brackets: brackets
             )
         case let .box(groups, yLabel, brackets):
             return .box(
-                title: analysis.rawValue, yLabel: yLabel,
+                title: analysis.label, yLabel: yLabel,
                 groups: groups.map { .init(label: $0.label, stats: BoxStats.compute($0.values)) },
                 brackets: brackets
             )
         case let .violin(groups, yLabel, brackets):
             return .violin(
-                title: analysis.rawValue, yLabel: yLabel,
+                title: analysis.label, yLabel: yLabel,
                 groups: groups.map {
                     .init(label: $0.label,
                           density: KernelDensity.gaussian($0.values),

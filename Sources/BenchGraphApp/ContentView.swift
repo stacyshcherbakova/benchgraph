@@ -3,6 +3,9 @@ import AppKit
 import BenchGraphKit
 import UniformTypeIdentifiers
 
+/// House accent — indigo, matching the docs site theme for brand cohesion.
+private let brandAccent = Color.indigo
+
 struct ContentView: View {
     @StateObject private var model = AppModel()
 
@@ -34,6 +37,7 @@ struct ContentView: View {
                 .disabled(model.chart == .none)
             }
         }
+        .tint(brandAccent)
     }
 
     // MARK: - Left: data entry + preview
@@ -42,10 +46,11 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Data")
                 .font(.title3).bold()
+                .foregroundStyle(brandAccent)
 
             HStack {
                 Picker("Analysis", selection: $model.analysis) {
-                    ForEach(Analysis.allCases) { Text($0.rawValue).tag($0) }
+                    ForEach(Analysis.allCases) { Text($0.label).tag($0) }
                 }
                 .labelsHidden()
                 Spacer()
@@ -221,7 +226,7 @@ private struct DataPreview: View {
             .padding(8)
         }
         .frame(maxHeight: 170)
-        .background(Color.gray.opacity(0.06))
+        .background(Color(nsColor: .controlBackgroundColor))
         .cornerRadius(6)
         .overlay(alignment: .bottom) {
             if rowCount > maxRows {
@@ -245,7 +250,7 @@ private struct ResultCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(result.analysis).font(.title3).bold()
+            Text(result.analysis).font(.title3).bold().foregroundStyle(brandAccent)
             Text(result.formula)
                 .font(.caption).foregroundColor(.secondary)
                 .textSelection(.enabled)
@@ -280,8 +285,14 @@ private struct ResultCard: View {
                 .font(.caption2).foregroundColor(.secondary)
         }
         .padding(14)
-        .background(Color.gray.opacity(0.06))
-        .cornerRadius(10)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color(nsColor: .controlBackgroundColor))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(brandAccent.opacity(0.15), lineWidth: 1)
+        )
     }
 
     private func section(title: String, systemImage: String, color: Color, items: [String]) -> some View {

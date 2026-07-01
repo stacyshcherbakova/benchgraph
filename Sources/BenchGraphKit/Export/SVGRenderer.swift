@@ -332,11 +332,9 @@ public struct SVGRenderer {
             let t = (v - domainMin) / (domainMax - domainMin)
             return rangeMin + t * (rangeMax - rangeMin)
         }
-        /// "Nice" tick values across the domain.
+        /// "Nice" round tick values within the domain (see `AxisTicks`).
         func ticks(_ count: Int = 5) -> [Double] {
-            guard domainMax > domainMin else { return [domainMin] }
-            let step = (domainMax - domainMin) / Double(count)
-            return (0...count).map { domainMin + Double($0) * step }
+            AxisTicks.nice(domainMin, domainMax, count: count)
         }
     }
 

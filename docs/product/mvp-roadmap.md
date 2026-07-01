@@ -2,8 +2,6 @@
 
 Source check date: 2026-05-28.
 
-Working name: BenchGraph. Provisional.
-
 ## Current Status
 
 **Stage: MVP build phase, working toward V1.** The analysis, graphs, export, and
@@ -51,8 +49,6 @@ and project-file tests).
 ### Goal
 
 A signed, notarized macOS DMG that lets a user create a local project, enter/import data, run a small set of validated analyses, generate publication-quality graphs, assemble simple figure layouts, and export clean files.
-
-Apple's direct macOS distribution path requires Developer ID signing, notarization, and developer-managed updates/support outside the Mac App Store.[^apple-distribution][^apple-signing]
 
 ### MVP User Promise
 
@@ -206,13 +202,17 @@ Target: larger biotech/pharma/clinical research groups.
 
 ## Technical Direction
 
-Recommended starting architecture:
+The MVP architecture is now built; see the
+[project and architecture spec](../project-spec.md) for detail. As implemented:
 
-- App: Swift + SwiftUI with AppKit where needed for professional table editing, document windows, menu commands, and export.
-- Rendering: custom vector-first graph renderer using Core Graphics/PDF/SVG output. Avoid relying only on Swift Charts if it cannot guarantee scientific export control.
-- Data model: local document package containing tables, analysis specs, graph specs, layout specs, and generated caches.
-- Stats engine: small validated native core for MVP tests, with strict fixtures and independent reference outputs. Re-evaluate embedded R or a Rust/C++ numerical core before V2.
-- File format: explicit versioned schema, likely SQLite or a package directory with JSON metadata plus binary caches. Do not hide analysis options in opaque blobs.
+- App: Swift + SwiftUI, with a UI-agnostic engine (`BenchGraphKit`) shared by the app and CLI; AppKit used where needed for document windows, menu commands, and export.
+- Rendering: a custom vector-first renderer — a deterministic, text-based SVG renderer plus a Core Graphics renderer for PDF/PNG/TIFF — rather than relying on Swift Charts for export control.
+- Data model: a single versioned JSON project document holding the raw data plus the analysis specification. Persisting full graph/layout specs is planned, not yet done.
+- File format: a plain, human-readable, key-sorted JSON `.benchgraph` file — explicit, inspectable, and diffable, with no opaque blobs. (The earlier SQLite / package-directory option was considered but not adopted.)
+- Stats engine: a small validated native Swift core with **zero external dependencies** (self-contained distributions) and independent SciPy reference fixtures. Re-evaluate an embedded R or Rust/C++ numerical core before V2.
+
+Still forward-looking:
+
 - Distribution: Developer ID signing, notarized DMG, optional Sparkle-style signed updates.
 - Privacy: default offline. Any telemetry, crash reporting, licensing, or cloud sync must be explicit and separable.
 
@@ -241,10 +241,4 @@ Recommended starting architecture:
 - Should the first pricing model be personal/lab perpetual, subscription, or hybrid?
 - Should R/Python export be in MVP or V1?
 - Is XLSX import critical for MVP, or can CSV/paste cover the first release?
-- Should project files be single-file SQLite, macOS package directory, or zipped package?
 - Does the target buyer value App Store distribution, or is direct DMG expected?
-
-## Sources
-
-[^apple-distribution]: Apple macOS distribution overview: https://developer.apple.com/macos/distribution/
-[^apple-signing]: Apple Platform Security, app code signing process in macOS: https://support.apple.com/en-mide/guide/security/sec3ad8e6e53/web

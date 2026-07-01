@@ -19,7 +19,8 @@ public struct ProjectDocument: Codable, Equatable {
     public var data: String
     /// Whether the first row is a header.
     public var hasHeader: Bool
-    /// The selected analysis, stored by its display name (UI-layer identifier).
+    /// The selected analysis, stored by a stable identifier (not its display
+    /// label), so re-wording the UI label does not break older project files.
     public var analysisName: String
     /// Engine version that wrote the file, for provenance.
     public var savedWithEngine: String
