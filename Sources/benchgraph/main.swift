@@ -159,12 +159,19 @@ func runRegress(_ o: Options) throws {
 
     if let path = o.figurePath {
         let fit = LinearRegression.fit(x, y)
-        let xMin = x.min()!, xMax = x.max()!
-        let line = [(x: xMin, y: fit.predict(xMin)), (x: xMax, y: fit.predict(xMax))]
-        try renderFigure(.scatter(
-            title: "Linear regression", xLabel: "X", yLabel: "Y",
-            series: [.init(name: "data", points: zip(x, y).map { (x: $0, y: $1) })],
-            curve: line, logX: false), to: path, theme: try o.resolvedTheme())
+        let req: FigureExport.Request
+        if o.flag("residuals") {
+            req = residualFigure(x: x, y: y, predict: fit.predict, logX: false,
+                                 title: "Linear regression — residuals")
+        } else {
+            let xMin = x.min()!, xMax = x.max()!
+            let line = [(x: xMin, y: fit.predict(xMin)), (x: xMax, y: fit.predict(xMax))]
+            req = .scatter(
+                title: "Linear regression", xLabel: "X", yLabel: "Y",
+                series: [.init(name: "data", points: zip(x, y).map { (x: $0, y: $1) })],
+                curve: line, logX: false)
+        }
+        try renderFigure(req, to: path, theme: try o.resolvedTheme())
     }
 }
 
@@ -176,19 +183,39 @@ func runDoseResponse(_ o: Options) throws {
 
     if let path = o.figurePath {
         let fit = FourPL.fit(x: x, y: y)
-        let positiveX = x.filter { $0 > 0 }
-        let lo = log10(positiveX.min() ?? 1)
-        let hi = log10(positiveX.max() ?? 10)
-        let curve = stride(from: lo, through: hi, by: (hi - lo) / 80).map { exp -> (x: Double, y: Double) in
-            let xv = pow(10, exp)
-            return (x: xv, y: fit.predict(xv))
+        let req: FigureExport.Request
+        if o.flag("residuals") {
+            req = residualFigure(x: x, y: y, predict: fit.predict, logX: true,
+                                 title: "Dose-response (4PL) — residuals")
+        } else {
+            let positiveX = x.filter { $0 > 0 }
+            let lo = log10(positiveX.min() ?? 1)
+            let hi = log10(positiveX.max() ?? 10)
+            let curve = stride(from: lo, through: hi, by: (hi - lo) / 80).map { exp -> (x: Double, y: Double) in
+                let xv = pow(10, exp)
+                return (x: xv, y: fit.predict(xv))
+            }
+            req = .scatter(
+                title: "Dose-response (4PL)",
+                xLabel: "Concentration (log scale)", yLabel: "Response",
+                series: [.init(name: "data", points: zip(x, y).map { (x: $0, y: $1) })],
+                curve: curve, logX: true)
         }
-        try renderFigure(.scatter(
-            title: "Dose-response (4PL)",
-            xLabel: "Concentration (log scale)", yLabel: "Response",
-            series: [.init(name: "data", points: zip(x, y).map { (x: $0, y: $1) })],
-            curve: curve, logX: true), to: path, theme: try o.resolvedTheme())
+        try renderFigure(req, to: path, theme: try o.resolvedTheme())
     }
+}
+
+/// A residual figure (observed − predicted vs X) with a zero reference line,
+/// shared by the regression and dose-response commands.
+func residualFigure(x: [Double], y: [Double], predict: (Double) -> Double,
+                    logX: Bool, title: String) -> FigureExport.Request {
+    let points = zip(x, y).map { (x: $0, y: $1 - predict($0)) }
+    let xs = logX ? x.filter { $0 > 0 } : x
+    let lo = xs.min() ?? 0, hi = xs.max() ?? 1
+    return .scatter(title: title, xLabel: logX ? "Concentration (log scale)" : "X",
+                    yLabel: "Residual",
+                    series: [.init(name: "resid", points: points)],
+                    curve: [(x: lo, y: 0), (x: hi, y: 0)], logX: logX)
 }
 
 // MARK: - Output formatting
@@ -340,11 +367,20 @@ struct Options {
 
     func loadTable(kind: TableKind) throws -> DataTable {
         guard let path = inputPath else { throw CLIError("no input file given") }
-        guard let text = try? String(contentsOfFile: path, encoding: .utf8) else {
-            throw CLIError("could not read file: \(path)")
-        }
         let hasHeader = !flag("no-header")
-        let table = CSVImporter().parse(text, kind: kind, hasHeader: hasHeader)
+        let table: DataTable
+        if (path as NSString).pathExtension.lowercased() == "xlsx" {
+            guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else {
+                throw CLIError("could not read file: \(path)")
+            }
+            do { table = try XLSXImporter().parse(data, kind: kind, hasHeader: hasHeader) }
+            catch { throw CLIError("could not read xlsx \(path): \(error)") }
+        } else {
+            guard let text = try? String(contentsOfFile: path, encoding: .utf8) else {
+                throw CLIError("could not read file: \(path)")
+            }
+            table = CSVImporter().parse(text, kind: kind, hasHeader: hasHeader)
+        }
         guard !table.columns.isEmpty else { throw CLIError("no columns parsed from \(path)") }
         return table
     }
@@ -368,7 +404,7 @@ func printUsage() {
     benchgraph \(BenchGraph.version) — fast path from data to trustworthy stats and figures.
 
     USAGE:
-      benchgraph <command> <file.csv> [options]
+      benchgraph <command> <file.csv|file.tsv|file.xlsx> [options]
 
     COMMANDS:
       describe      Descriptive statistics for every column
@@ -383,8 +419,10 @@ func printUsage() {
       correlate     Correlation of columns 1 (X) and 2 (Y)
                       --spearman    rank correlation (default is Pearson)
       regress       Simple linear regression (X = col 1, Y = col 2)
+                      --residuals   plot residuals instead of the fitted line
       doseresponse  4PL dose-response fit (X = concentration, Y = response)
                       --interpolate 50,75   read x at these y values
+                      --residuals   plot residuals instead of the fitted curve
 
     GLOBAL OPTIONS:
       --no-header   treat the first row as data, not column names

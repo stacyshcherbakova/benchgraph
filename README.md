@@ -14,9 +14,12 @@ with independent test fixtures") — plus a CLI that performs the core promise
 end-to-end: **import data → run an analysis → export a figure**.
 
 - **`BenchGraphKit`** — a Swift library:
-  - **Tables & import**: `DataTable` (column / XY / grouped) and a tolerant
+  - **Tables & import**: `DataTable` (column / XY / grouped), a tolerant
     CSV/TSV/paste parser (`CSVImporter`) that handles headers, quoted fields,
-    thousands separators, empty cells, and non-numeric "missing" tokens.
+    thousands separators, empty cells, and non-numeric "missing" tokens, a
+    **dependency-free `XLSXImporter`** (a minimal ZIP+XML reader using the OS
+    `Compression` framework), and an editable string grid (`EditGrid`) that the
+    app types into.
   - **Analyses** (each returns a provenance-rich `AnalysisResult` carrying the
     formula, assumptions, warnings, and excluded-cell count):
     descriptive statistics, one-sample / paired / unpaired t tests
@@ -28,23 +31,26 @@ end-to-end: **import data → run an analysis → export a figure**.
   - **Distributions**: self-contained normal, Student's t, and F distributions
     (via a regularized incomplete beta), so p-values depend on no external library.
   - **Export**: a deterministic, text-based `SVGRenderer`, plus a CoreGraphics
-    renderer for **PDF, PNG, and TIFF** — scatter/XY plots with fitted curves
-    and log axes, bar charts with selectable SD/SEM/CI error bars, **box and
-    violin plots**, **significance brackets** linked to analysis p-values, and
-    **journal theme presets**. A `FigureExport` helper picks the format by file
-    extension.
+    renderer for **PDF, PNG, and TIFF** — scatter/XY plots with fitted curves,
+    log axes, and **residual plots**, bar charts with selectable SD/SEM/CI error
+    bars, **box and violin plots**, **significance brackets** linked to analysis
+    p-values, and **journal theme presets**. `FigureExport` picks the format by
+    file extension; `FigureLayout` composes several figures into one
+    **multi-panel figure with A/B/C labels**; and `ExportManifest` records the
+    data source, options, and app version alongside an export.
   - **Project files**: a versioned, human-readable JSON `ProjectDocument`
-    (`.benchgraph`) that round-trips the data and analysis spec so a project
-    reopens exactly.
+    (`.benchgraph`, schema v2) that round-trips the data, analysis spec, and
+    presentation options so a project reopens exactly.
 - **`benchgraph`** — a CLI front end demonstrating the workflow.
-- **`BenchGraphApp`** — a SwiftUI macOS app (window) built on the same engine:
-  paste CSV/TSV data, see it parsed, pick an analysis, and get a live
-  provenance-rich result plus a native chart. Export figures to SVG/PDF/PNG/TIFF
-  and save/open `.benchgraph` project files.
+- **`BenchGraphApp`** — a SwiftUI macOS app built on the same engine: type into
+  an **editable data grid** (or paste/import CSV/TSV/XLSX), pick an analysis, and
+  get a live provenance-rich result plus a native chart, with **undo/redo** across
+  edits. Export figures to SVG/PDF/PNG/TIFF, **copy them as vector** (PDF+SVG) to
+  the clipboard, stage **multi-panel layouts**, and save/open `.benchgraph`
+  project files (which the app registers so they open on double-click).
 
-A signed/notarized DMG for distribution is the remaining V1 packaging step (it
-requires an Apple Developer ID); this MVP establishes and verifies the engine,
-CLI, and app on top of it.
+The signing/notarization/DMG pipeline is scripted in `scripts/build-app.sh`;
+producing a distributable signed DMG needs an Apple Developer ID credential.
 
 ## Requirements
 
@@ -55,7 +61,7 @@ CLI, and app on top of it.
 
 ```bash
 swift build                 # build the library + CLI
-./scripts/test.sh           # run the test suite (56 tests)
+./scripts/test.sh           # run the test suite (86 tests)
 ```
 
 `scripts/test.sh` wraps `swift test` with the framework paths needed when only the
@@ -69,10 +75,15 @@ Command Line Tools are installed (no full Xcode). With Xcode installed, plain
 open BenchGraph.app         # launch it
 ```
 
-The app opens with a sample dose-response dataset loaded. Paste your own CSV/TSV
-on the left, choose an analysis from the picker, and the results panel and chart
-update live. Switch column charts between bars/box/violin, pick a journal theme,
-and use **Export figure…** to save the current chart as SVG, PDF, PNG, or TIFF.
+The app opens with a sample dose-response dataset loaded. Type directly into the
+data grid, or paste/**Import…** CSV/TSV/XLSX, then choose an analysis from the
+picker and the results panel and chart update live; ⌘Z / ⇧⌘Z undo and redo any
+edit. Switch column charts between bars/box/violin, toggle residuals for fits,
+pick a journal theme, and use **Export figure…** (SVG/PDF/PNG/TIFF, with a
+`.manifest.json` written alongside) or **Copy (vector)**. In the
+**Multi-panel figure** tray, **Add current chart** captures the chart as a
+thumbnail panel (A, B, C…) that you can reorder or remove, then **Export
+figure…** combines them into one labeled multi-panel figure.
 
 ### CLI examples
 
@@ -89,6 +100,11 @@ and use **Export figure…** to save the current chart as SVG, PDF, PNG, or TIFF
 # 4PL dose-response: fit, interpolate x at response 50, export a PDF figure
 .build/debug/benchgraph doseresponse examples/dose-response.csv \
     --interpolate 50 --out examples/dose-response.pdf   # or .svg/.png/.tiff
+
+# Read an .xlsx workbook directly, and export a residual plot
+.build/debug/benchgraph ttest results.xlsx
+.build/debug/benchgraph regress examples/dose-response.csv \
+    --residuals --out residuals.svg
 
 # Full command list (describe, ttest, anova, posthoc, mannwhitney,
 # wilcoxon, normality, correlate, regress, doseresponse)

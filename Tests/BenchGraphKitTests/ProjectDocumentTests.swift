@@ -59,4 +59,34 @@ import Foundation
         let loaded = try ProjectDocument.load(from: url)
         #expect(loaded == original)
     }
+
+    // MARK: - v2 presentation options
+
+    @Test func presentationOptionsRoundTrip() throws {
+        let doc = ProjectDocument(
+            tableKind: .column, data: "A,B\n1,2", hasHeader: true, analysisName: "ttest.welch",
+            errorBar: .ci95, plotStyle: "Box", showSignificance: false, themeName: "Nature"
+        )
+        let restored = try ProjectDocument.decoded(from: doc.encoded())
+        #expect(restored == doc)
+        #expect(restored.errorBar == .ci95)
+        #expect(restored.plotStyle == "Box")
+        #expect(restored.showSignificance == false)
+        #expect(restored.themeName == "Nature")
+        #expect(restored.version == 2)
+    }
+
+    /// A v1 file (no option keys) must still load, with options coming back nil.
+    @Test func legacyV1FileStillLoads() throws {
+        let v1 = #"""
+        {"analysisName":"ttest.welch","data":"A,B\n1,2","hasHeader":true,"savedWithEngine":"0.1.0-mvp","tableKind":"column","version":1}
+        """#
+        let doc = try ProjectDocument.decoded(from: Data(v1.utf8))
+        #expect(doc.version == 1)
+        #expect(doc.analysisName == "ttest.welch")
+        #expect(doc.errorBar == nil)
+        #expect(doc.plotStyle == nil)
+        #expect(doc.showSignificance == nil)
+        #expect(doc.themeName == nil)
+    }
 }

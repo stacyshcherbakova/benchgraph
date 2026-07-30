@@ -8,11 +8,12 @@ private let brandAccent = Color.indigo
 
 struct ContentView: View {
     @StateObject private var model = AppModel()
+    @State private var layoutColumns = 2
 
     var body: some View {
         HSplitView {
             dataPane
-                .frame(minWidth: 320, idealWidth: 380)
+                .frame(minWidth: 360, idealWidth: 420)
             resultsPane
                 .frame(minWidth: 420)
         }
@@ -25,10 +26,26 @@ struct ContentView: View {
                     Label("Save", systemImage: "tray.and.arrow.down")
                 }
             }
-            ToolbarItem(placement: .principal) {
-                Text("BenchGraph").font(.headline)
+            ToolbarItemGroup(placement: .principal) {
+                Button { model.undo() } label: {
+                    Label("Undo", systemImage: "arrow.uturn.backward")
+                }
+                .keyboardShortcut("z", modifiers: .command)
+                .disabled(!model.canUndo)
+                Button { model.redo() } label: {
+                    Label("Redo", systemImage: "arrow.uturn.forward")
+                }
+                .keyboardShortcut("z", modifiers: [.command, .shift])
+                .disabled(!model.canRedo)
             }
-            ToolbarItem(placement: .primaryAction) {
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button {
+                    copyFigureVector()
+                } label: {
+                    Label("Copy (vector)", systemImage: "doc.on.doc")
+                }
+                .disabled(model.chart == .none)
+                .help("Copy the figure to the clipboard as vector PDF + SVG")
                 Button {
                     exportFigure()
                 } label: {
@@ -38,94 +55,168 @@ struct ContentView: View {
             }
         }
         .tint(brandAccent)
+        .onReceive(NotificationCenter.default.publisher(for: .openBenchGraphProject)) { note in
+            if let url = note.object as? URL, let doc = try? ProjectDocument.load(from: url) {
+                model.apply(doc)
+            }
+        }
     }
 
-    // MARK: - Left: data entry + preview
+    // MARK: - Left: data entry + editable table
 
     private var dataPane: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Data")
-                .font(.title3).bold()
-                .foregroundStyle(brandAccent)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Data")
+                    .font(.title3).bold()
+                    .foregroundStyle(brandAccent)
 
-            HStack {
-                Picker("Analysis", selection: $model.analysis) {
-                    ForEach(Analysis.allCases) { Text($0.label).tag($0) }
+                HStack {
+                    Picker("Analysis", selection: analysisBinding) {
+                        ForEach(Analysis.allCases) { Text($0.label).tag($0) }
+                    }
+                    .labelsHidden()
+                    Spacer()
+                    Toggle("Header row", isOn: hasHeaderBinding)
+                        .toggleStyle(.checkbox)
                 }
-                .labelsHidden()
-                Spacer()
-                Toggle("Header row", isOn: $model.hasHeader)
-                    .toggleStyle(.checkbox)
-            }
 
-            Text(model.analysis.hint)
-                .font(.caption).foregroundColor(.secondary)
+                Text(model.analysis.hint)
+                    .font(.caption).foregroundColor(.secondary)
 
-            if model.isColumnChart {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 12) {
-                        Picker("Plot", selection: $model.columnPlot) {
-                            ForEach(ColumnPlot.allCases) { Text($0.rawValue).tag($0) }
+                if model.isColumnChart {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 12) {
+                            Picker("Plot", selection: columnPlotBinding) {
+                                ForEach(ColumnPlot.allCases) { Text($0.rawValue).tag($0) }
+                            }
+                            .pickerStyle(.segmented)
+                            .fixedSize()
+                            Spacer()
+                            Toggle("Significance", isOn: showSignificanceBinding)
+                                .toggleStyle(.checkbox)
                         }
-                        .pickerStyle(.segmented)
-                        .fixedSize()
-                        Spacer()
-                        Toggle("Significance", isOn: $model.showSignificance)
-                            .toggleStyle(.checkbox)
-                    }
-                    if model.isBarChart {
-                        Picker("Error bars", selection: $model.errorBar) {
-                            ForEach(ErrorBarKind.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                        if model.isBarChart {
+                            Picker("Error bars", selection: errorBarBinding) {
+                                ForEach(ErrorBarKind.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                            }
+                            .pickerStyle(.segmented)
+                            .fixedSize()
                         }
-                        .pickerStyle(.segmented)
-                        .fixedSize()
                     }
+                    .controlSize(.small)
+                }
+
+                HStack(spacing: 8) {
+                    Text("Theme").font(.caption).foregroundColor(.secondary)
+                    Picker("Theme", selection: themeBinding) {
+                        ForEach(Theme.presets, id: \.name) { Text($0.name).tag($0.name) }
+                    }
+                    .labelsHidden()
+                    .fixedSize()
+                    Spacer()
                 }
                 .controlSize(.small)
+
+                EditableTableView(model: model)
+
+                HStack {
+                    Button { model.addRow() } label: { Label("Row", systemImage: "plus") }
+                    Button { model.addColumn() } label: { Label("Column", systemImage: "plus") }
+                    Button { pasteFromClipboard() } label: { Label("Paste", systemImage: "doc.on.clipboard") }
+                    Button { importFile() } label: { Label("Import…", systemImage: "square.and.arrow.down") }
+                    Spacer()
+                    Button("Sample") { model.loadSample() }
+                    Button("Clear") { model.clear() }
+                }
+                .controlSize(.small)
+
+                Divider().padding(.vertical, 2)
+                panelSection
             }
+            .padding(14)
+        }
+    }
+
+    // MARK: - Multi-panel figure staging
+
+    private var panelSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Multi-panel figure")
+                .font(.caption).bold().foregroundColor(.secondary)
+            Text("Capture the chart on the right as a panel, build up A, B, C…, then export them as one combined journal-style figure.")
+                .font(.caption2).foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: 8) {
-                Text("Theme").font(.caption).foregroundColor(.secondary)
-                Picker("Theme", selection: Binding(
-                    get: { model.theme.name },
-                    set: { if let t = Theme.named($0) { model.theme = t } }
-                )) {
-                    ForEach(Theme.presets, id: \.name) { Text($0.name).tag($0.name) }
+                Button {
+                    withAnimation(.easeOut(duration: 0.2)) { model.addCurrentPanel() }
+                } label: {
+                    Label("Add current chart", systemImage: "plus.square.on.square")
                 }
-                .labelsHidden()
-                .fixedSize()
+                .disabled(model.chart == .none)
+                .help("Capture the chart shown on the right as the next panel")
                 Spacer()
+                if model.panelCount > 1 {
+                    Stepper("Columns: \(layoutColumns)", value: $layoutColumns, in: 1...4)
+                        .fixedSize()
+                }
             }
-            .controlSize(.small)
 
-            Text("Paste CSV / TSV (from Excel or Numbers)")
-                .font(.caption).foregroundColor(.secondary)
-            TextEditor(text: $model.rawText)
-                .font(.system(.body, design: .monospaced))
-                .frame(minHeight: 160)
-                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.gray.opacity(0.3)))
-
-            HStack {
-                Button("Load sample") { loadSample() }
-                Button("Clear") { model.rawText = "" }
-                Spacer()
+            if model.panelCount == 0 {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                    .foregroundColor(Color.gray.opacity(0.4))
+                    .frame(height: 54)
+                    .overlay(
+                        Text("No panels yet — charts you add appear here")
+                            .font(.caption2).foregroundColor(.secondary)
+                    )
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(alignment: .top, spacing: 8) {
+                        ForEach(Array(model.stagedPanels.enumerated()), id: \.element.id) { i, panel in
+                            PanelCard(
+                                label: model.panelLabels[i],
+                                title: panel.title,
+                                image: panel.thumbnail,
+                                canMoveLeft: i > 0,
+                                canMoveRight: i < model.panelCount - 1,
+                                onMoveLeft: { withAnimation { model.movePanel(panel.id, by: -1) } },
+                                onMoveRight: { withAnimation { model.movePanel(panel.id, by: 1) } },
+                                onRemove: { withAnimation { model.removePanel(panel.id) } }
+                            )
+                        }
+                    }
+                    .padding(2)
+                }
+                HStack(spacing: 8) {
+                    Button { exportLayout() } label: {
+                        Label("Export figure…", systemImage: "square.grid.2x2")
+                    }
+                    Button("Clear") { withAnimation { model.clearPanels() } }
+                    Spacer()
+                    Text(layoutSummary)
+                        .font(.caption2).foregroundColor(.secondary)
+                }
             }
-            .controlSize(.small)
-
-            if let table = model.table, !table.columns.isEmpty {
-                Text("Parsed preview")
-                    .font(.caption).foregroundColor(.secondary)
-                DataPreview(table: table)
-            }
-            Spacer()
         }
-        .padding(14)
+        .controlSize(.small)
+    }
+
+    /// E.g. "3 panels · 2×2 grid" for the current staging and column count.
+    private var layoutSummary: String {
+        let n = model.panelCount
+        let rows = Int((Double(n) / Double(layoutColumns)).rounded(.up))
+        return "\(n) panel\(n == 1 ? "" : "s") · \(rows)×\(min(layoutColumns, n)) grid"
     }
 
     // MARK: - Right: results + chart
 
     private var resultsPane: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        // A draggable split so the results/metadata and the chart can be resized;
+        // the results get a taller default so a typical result shows without scrolling.
+        VSplitView {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     if let message = model.errorMessage {
@@ -138,21 +229,86 @@ struct ContentView: View {
                     }
                 }
                 .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            Divider()
-            ChartView(spec: model.chart, theme: model.theme)
-                .frame(minHeight: 260)
+            .frame(minHeight: 220, idealHeight: 430)
+
+            VStack(spacing: 0) {
+                if model.supportsResiduals {
+                    HStack {
+                        ChartModeTabs(showResiduals: showResidualsBinding)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color(nsColor: .windowBackgroundColor))
+                    Divider()
+                }
+                ChartView(spec: model.chart, theme: model.theme)
+            }
+            .frame(minHeight: 260, idealHeight: 360)
         }
+    }
+
+    // MARK: - Option bindings (routed through the model for undo)
+
+    private var analysisBinding: Binding<Analysis> {
+        Binding(get: { model.analysis }, set: { model.setAnalysis($0) })
+    }
+    private var hasHeaderBinding: Binding<Bool> {
+        Binding(get: { model.hasHeader }, set: { model.setHasHeader($0) })
+    }
+    private var columnPlotBinding: Binding<ColumnPlot> {
+        Binding(get: { model.columnPlot }, set: { model.setColumnPlot($0) })
+    }
+    private var showSignificanceBinding: Binding<Bool> {
+        Binding(get: { model.showSignificance }, set: { model.setShowSignificance($0) })
+    }
+    private var showResidualsBinding: Binding<Bool> {
+        Binding(get: { model.showResiduals }, set: { model.setShowResiduals($0) })
+    }
+    private var errorBarBinding: Binding<ErrorBarKind> {
+        Binding(get: { model.errorBar }, set: { model.setErrorBar($0) })
+    }
+    private var themeBinding: Binding<String> {
+        Binding(get: { model.theme.name }, set: { if let t = Theme.named($0) { model.setTheme(t) } })
     }
 
     // MARK: - Actions
 
-    private func loadSample() {
-        switch model.analysis.tableKind {
-        case .xy:
-            model.rawText = "Concentration,Response\n1,9.1\n3,23.0\n10,49.5\n30,75.2\n100,90.9\n300,96.8"
-        default:
-            model.rawText = "Control,Treated\n5.1,7.2\n4.8,6.9\n5.5,7.8\n5.0,7.1\n4.9,6.5\n5.3,7.6"
+    private func pasteFromClipboard() {
+        if let s = NSPasteboard.general.string(forType: .string), !s.isEmpty {
+            model.replaceData(with: s)
+        }
+    }
+
+    /// Import data from an .xlsx workbook or a CSV/TSV file into the grid.
+    private func importFile() {
+        let panel = NSOpenPanel()
+        var types: [UTType] = [.commaSeparatedText, .tabSeparatedText, .plainText]
+        if let xlsx = UTType(filenameExtension: "xlsx") { types.insert(xlsx, at: 0) }
+        panel.allowedContentTypes = types
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        if url.pathExtension.lowercased() == "xlsx" {
+            if let data = try? Data(contentsOf: url),
+               let csv = try? XLSXImporter().csvText(from: data) {
+                model.replaceData(with: csv)
+            }
+        } else if let text = try? String(contentsOf: url, encoding: .utf8) {
+            model.replaceData(with: text)
+        }
+    }
+
+    /// Copy the current figure to the clipboard as vector data: PDF (widely
+    /// pasteable into Illustrator, Keynote, Word) plus SVG for vector editors.
+    private func copyFigureVector() {
+        guard let pdf = model.figureData(pathExtension: "pdf") else { return }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setData(pdf, forType: .pdf)
+        if let svg = model.figureData(pathExtension: "svg") {
+            pb.setData(svg, forType: NSPasteboard.PasteboardType("public.svg-image"))
         }
     }
 
@@ -185,64 +341,254 @@ struct ContentView: View {
         panel.allowedContentTypes = [.svg, .pdf, .png, .tiff]
         panel.nameFieldStringValue = "figure.pdf"
         panel.canCreateDirectories = true
+        panel.message = "A .manifest.json recording the data source and analysis options is written alongside the figure."
         if panel.runModal() == .OK, let url = panel.url {
             let ext = url.pathExtension.isEmpty ? "pdf" : url.pathExtension
             if let data = model.figureData(pathExtension: ext) {
                 try? data.write(to: url)
+                writeManifest(model.exportManifest(), besideFigure: url)
             }
         }
     }
+
+    private func exportLayout() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.pdf, .svg, .png, .tiff]
+        panel.nameFieldStringValue = "figure-panels.pdf"
+        panel.canCreateDirectories = true
+        panel.message = "Exports the staged panels as one multi-panel figure, with a .manifest.json alongside."
+        if panel.runModal() == .OK, let url = panel.url {
+            let ext = url.pathExtension.isEmpty ? "pdf" : url.pathExtension
+            if let data = model.layoutData(pathExtension: ext, columns: layoutColumns) {
+                try? data.write(to: url)
+                writeManifest(model.layoutManifest(), besideFigure: url)
+            }
+        }
+    }
+
+    /// Write a provenance manifest as `<figure-basename>.manifest.json` next to
+    /// the exported figure.
+    private func writeManifest(_ encode: @autoclosure () -> Data?, besideFigure url: URL) {
+        guard let data = encode() else { return }
+        let manifestURL = url.deletingLastPathComponent()
+            .appendingPathComponent(ExportManifest.filename(forFigure: url.lastPathComponent))
+        try? data.write(to: manifestURL)
+    }
 }
 
-// MARK: - Components
+private extension ContentView {
+    func writeManifest(_ manifest: ExportManifest, besideFigure url: URL) {
+        writeManifest(try? manifest.encoded(), besideFigure: url)
+    }
+    func writeManifest(_ manifest: LayoutManifest, besideFigure url: URL) {
+        writeManifest(try? manifest.encoded(), besideFigure: url)
+    }
+}
 
-/// Read-only grid preview of the parsed table (first rows).
-private struct DataPreview: View {
-    let table: DataTable
-    private let maxRows = 10
+// MARK: - Staged panel card
 
-    private var rowCount: Int { table.columns.map { $0.values.count }.max() ?? 0 }
+/// A staged panel in the multi-panel tray: a thumbnail of the captured chart,
+/// its A/B/C badge, the title, and remove/reorder controls (× button; right-click
+/// for move left/right).
+private struct PanelCard: View {
+    let label: String
+    let title: String
+    let image: NSImage?
+    let canMoveLeft: Bool
+    let canMoveRight: Bool
+    let onMoveLeft: () -> Void
+    let onMoveRight: () -> Void
+    let onRemove: () -> Void
 
     var body: some View {
-        let shown = min(rowCount, maxRows)
-        ScrollView(.horizontal, showsIndicators: true) {
-            Grid(alignment: .trailing, horizontalSpacing: 14, verticalSpacing: 3) {
-                GridRow {
-                    ForEach(Array(table.columns.enumerated()), id: \.offset) { _, col in
-                        Text(col.name).font(.caption).bold()
-                    }
-                }
-                Divider()
-                ForEach(0..<shown, id: \.self) { row in
-                    GridRow {
-                        ForEach(Array(table.columns.enumerated()), id: \.offset) { _, col in
-                            Text(cell(col, row))
-                                .font(.system(.caption, design: .monospaced))
-                                .foregroundColor(col.values.indices.contains(row) && col.values[row] == nil ? .secondary : .primary)
-                        }
-                    }
-                }
+        VStack(spacing: 3) {
+            ZStack(alignment: .topLeading) {
+                thumbnail
+                Text(label)
+                    .font(.caption2.bold())
+                    .foregroundStyle(.white)
+                    .frame(width: 16, height: 16)
+                    .background(Circle().fill(brandAccent))
+                    .padding(4)
             }
-            .padding(8)
+            .overlay(alignment: .topTrailing) {
+                Button(action: onRemove) {
+                    Image(systemName: "xmark.circle.fill")
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(.white, Color.gray.opacity(0.85))
+                }
+                .buttonStyle(.plain)
+                .padding(2)
+                .help("Remove panel")
+            }
+            Text(title)
+                .font(.caption2)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .foregroundColor(.secondary)
+                .frame(width: 108)
         }
-        .frame(maxHeight: 170)
-        .background(Color(nsColor: .controlBackgroundColor))
-        .cornerRadius(6)
-        .overlay(alignment: .bottom) {
-            if rowCount > maxRows {
-                Text("… \(rowCount - maxRows) more rows")
-                    .font(.caption2).foregroundColor(.secondary)
-                    .padding(2)
+        .contextMenu {
+            Button("Move left", action: onMoveLeft).disabled(!canMoveLeft)
+            Button("Move right", action: onMoveRight).disabled(!canMoveRight)
+            Divider()
+            Button("Remove", role: .destructive, action: onRemove)
+        }
+    }
+
+    private var thumbnail: some View {
+        Group {
+            if let image {
+                Image(nsImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+            } else {
+                Image(systemName: "chart.bar")
+                    .foregroundColor(.secondary)
+            }
+        }
+        .frame(width: 108, height: 79)
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(Color.gray.opacity(0.3)))
+    }
+}
+
+// MARK: - Chart mode tabs
+
+/// A small accent-pill segmented control for switching the chart between the
+/// fitted graph and the residual plot. Reads as two tabs; the active one is
+/// filled with the brand accent.
+private struct ChartModeTabs: View {
+    @Binding var showResiduals: Bool
+
+    var body: some View {
+        HStack(spacing: 3) {
+            tab("Graph", icon: "chart.xyaxis.line", selected: !showResiduals) { showResiduals = false }
+            tab("Residuals", icon: "chart.dots.scatter", selected: showResiduals) { showResiduals = true }
+        }
+        .padding(3)
+        .background(
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(Color(nsColor: .quaternaryLabelColor).opacity(0.4))
+        )
+    }
+
+    private func tab(_ title: String, icon: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: icon)
+                .font(.callout.weight(selected ? .semibold : .regular))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+                .foregroundStyle(selected ? Color.white : Color.secondary)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(selected ? brandAccent : Color.clear)
+                        .shadow(color: selected ? brandAccent.opacity(0.35) : .clear, radius: 3, y: 1)
+                )
+                .contentShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(.plain)
+        .animation(.easeInOut(duration: 0.15), value: selected)
+    }
+}
+
+// MARK: - Editable table
+
+/// A spreadsheet-like editable grid. Cells and headers are plain text fields;
+/// edits flow straight into the model (live recompute) and coalesce into a
+/// single undo step per editing session via `begin/commitInteractiveEdit`.
+private struct EditableTableView: View {
+    @ObservedObject var model: AppModel
+    private let cellWidth: CGFloat = 92
+    private let gutter: CGFloat = 26
+
+    var body: some View {
+        let grid = model.grid
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Table — type to edit, ⌘Z to undo")
+                .font(.caption).foregroundColor(.secondary)
+            ScrollView([.horizontal, .vertical]) {
+                VStack(spacing: 3) {
+                    headerRow(grid)
+                    ForEach(0..<grid.rowCount, id: \.self) { r in
+                        dataRow(grid, r)
+                    }
+                }
+                .padding(6)
+            }
+            .frame(minHeight: 150, maxHeight: 240)
+            .background(Color(nsColor: .controlBackgroundColor))
+            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.gray.opacity(0.25)))
+        }
+    }
+
+    private func headerRow(_ grid: EditGrid) -> some View {
+        HStack(spacing: 3) {
+            Color.clear.frame(width: gutter, height: 1)
+            ForEach(0..<grid.columnCount, id: \.self) { c in
+                HStack(spacing: 2) {
+                    if model.hasHeader {
+                        TextField("", text: columnNameBinding(c), onEditingChanged: editBracket)
+                            .textFieldStyle(.plain)
+                            .font(.system(.caption, design: .default).bold())
+                            .frame(width: cellWidth - 16)
+                    } else {
+                        Text(grid.columnNames[c])
+                            .font(.caption).bold().foregroundColor(.secondary)
+                            .frame(width: cellWidth - 16, alignment: .leading)
+                    }
+                    Button { model.removeColumn(c) } label: {
+                        Image(systemName: "xmark.circle.fill").font(.system(size: 9))
+                    }
+                    .buttonStyle(.borderless)
+                    .foregroundColor(.secondary)
+                    .help("Delete column")
+                    .disabled(grid.columnCount <= 1)
+                }
+                .frame(width: cellWidth)
             }
         }
     }
 
-    private func cell(_ col: DataColumn, _ row: Int) -> String {
-        guard col.values.indices.contains(row) else { return "" }
-        guard let v = col.values[row] else { return "—" }
-        return v == v.rounded() ? String(format: "%.0f", v) : String(format: "%g", v)
+    private func dataRow(_ grid: EditGrid, _ r: Int) -> some View {
+        HStack(spacing: 3) {
+            Button { model.removeRow(r) } label: {
+                Image(systemName: "minus.circle").font(.system(size: 11))
+            }
+            .buttonStyle(.borderless)
+            .foregroundColor(.secondary)
+            .frame(width: gutter)
+            .help("Delete row")
+            .disabled(grid.rowCount <= 1)
+
+            ForEach(0..<grid.columnCount, id: \.self) { c in
+                TextField("", text: cellBinding(r, c), onEditingChanged: editBracket)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(.caption, design: .monospaced))
+                    .frame(width: cellWidth)
+            }
+        }
+    }
+
+    // Undo bracketing for a typing session.
+    private func editBracket(_ began: Bool) {
+        if began { model.beginInteractiveEdit() } else { model.commitInteractiveEdit() }
+    }
+
+    private func cellBinding(_ r: Int, _ c: Int) -> Binding<String> {
+        Binding(get: { model.grid.cell(r, c) }, set: { model.updateCell(r, c, $0) })
+    }
+
+    private func columnNameBinding(_ c: Int) -> Binding<String> {
+        Binding(
+            get: { model.grid.columnNames.indices.contains(c) ? model.grid.columnNames[c] : "" },
+            set: { model.renameColumn(c, to: $0) }
+        )
     }
 }
+
+// MARK: - Result display
 
 /// Provenance-rich result display: numbers, then assumptions/warnings.
 private struct ResultCard: View {

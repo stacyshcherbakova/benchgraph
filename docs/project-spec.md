@@ -1,6 +1,6 @@
 # Project And Architecture Spec
 
-Last updated: 2026-06-30. Engine version: `0.1.0-mvp`.
+Last updated: 2026-07-03. Engine version: `0.1.0-mvp`.
 
 This document describes how BenchGraph is built and why — the system
 architecture and the design decisions behind it. It deliberately does not
@@ -34,15 +34,17 @@ the same `BenchGraphKit` types, so any analysis behaves identically in both.
 ```text
 Sources/
   BenchGraphKit/
-    Tables/        DataTable, CSVImporter
+    Tables/        DataTable, CSVImporter, XLSXImporter, EditGrid
     Stats/         analyses + self-contained Distributions
     Provenance/    AnalysisResult (the result envelope)
-    Export/        SVGRenderer, CGChartRenderer, FigureExport, Significance, Theme
-    Document/      ProjectDocument (.benchgraph file)
+    Export/        SVGRenderer, CGChartRenderer, FigureExport, FigureLayout,
+                   ExportManifest, Significance, Theme
+    Document/      ProjectDocument (.benchgraph file, schema v2)
   benchgraph/      CLI (main.swift)
   BenchGraphApp/   SwiftUI app (AppModel, ContentView, ChartView, BenchGraphApp)
-Tests/             SciPy-validated golden-value + rendering + project-file tests
-scripts/           build-app.sh, test.sh
+Tests/             SciPy-validated golden-value + rendering + multi-panel +
+                   manifest + XLSX + editable-grid + project-file tests
+scripts/           build-app.sh (bundle + signing/notarization/DMG), test.sh
 examples/          sample CSV + exported figures
 docs/              this documentation
 ```
@@ -73,12 +75,14 @@ alongside the value.
 ### D3 — An open, versioned project file (`.benchgraph`)
 
 A project saves as a custom extension wrapping **plain, pretty-printed,
-key-sorted JSON** (`ProjectDocument`, schema `version` 1). It stores the raw
-pasted data verbatim, the table kind, header flag, the selected analysis (by a
-**stable key, decoupled from its UI label**), and the engine version that wrote
-it. Loads reject any file whose `version` is newer than the running build
-understands, and tolerate the legacy label-based identifier written by earlier
-builds.
+key-sorted JSON** (`ProjectDocument`, schema `version` 2). It stores the raw
+data verbatim, the table kind, header flag, the selected analysis (by a
+**stable key, decoupled from its UI label**), the presentation options
+(error-bar type, plot style, theme, significance/residual toggles), and the
+engine version that wrote it. Loads reject any file whose `version` is newer
+than the running build understands, tolerate the legacy label-based identifier
+written by earlier builds, and read v1 files (whose option fields are absent)
+by falling back to defaults — the option fields are optional and decode to nil.
 
 *Why a custom extension rather than just `.json`?* The extension and the
 byte-format are independent concerns: JSON is *what the bytes are*; the
@@ -100,23 +104,29 @@ being JSON, which holds regardless of the extension. Sorted keys +
 pretty-printing keep output byte-stable for diffing, on-brand for a transparent,
 trustworthy tool and the deliberate opposite of a closed proprietary format.
 
-**Known limitations (see open questions):**
+**Resolved since the first MVP draft:**
 
-- The file does **not yet persist analysis options or chart styling** (error-bar
-  type, theme, paired/unpaired choice, post-hoc method, interpolation target,
-  etc.). So "reopens exactly as saved" is currently partial: it restores the
-  data and *which* analysis, not its full configuration.
-- The app does **not yet register the `.benchgraph` document type** with macOS
-  (no `CFBundleDocumentTypes` / exported UTI in the Info.plist), so the OS-level
-  payoff of a custom extension — double-click-to-open, a custom icon, Quick Look
-  — is intended but not wired up. Today the extension functions as a naming
-  convention; registering the type is a packaging follow-up.
+- The file **now persists the presentation options** (error-bar type, plot
+  style, theme, significance/residual toggles) alongside the data and analysis,
+  so "reopens exactly as saved" holds for the app's configurable options. The
+  paired/unpaired and Student/Welch choices are encoded in the analysis key
+  itself. Full multi-panel *layout* specs are not yet persisted.
+- The app **registers the `.benchgraph` document type** with macOS via
+  `build-app.sh` (an exported UTI conforming to `public.json` plus
+  `CFBundleDocumentTypes` in the Info.plist), and the app delegate routes
+  Finder-opened files into the live window, so double-click-to-open works. The
+  app and `.benchgraph` documents carry a custom icon, generated in code by
+  `scripts/make-icon.swift` (no binary design assets) and packed into
+  `assets/AppIcon.icns`. A Quick Look preview is still future polish.
 
 ### D4 — Deterministic, dependency-free rendering
 
 Figures render two ways: a text-based `SVGRenderer` that is byte-stable and
 therefore snapshot-testable, and a CoreGraphics `CGChartRenderer` for PDF, PNG,
 and TIFF. `FigureExport` selects the format from the output file extension.
+`FigureLayout` composes several figures into one multi-panel publication figure
+(A/B/C labels) through the same renderers, and `ExportManifest` records the data
+source, analysis options, and app version alongside an export.
 
 *Why:* deterministic SVG lets figures be regression-tested like any other
 output, and CoreGraphics covers the publication raster/vector formats without an
@@ -144,15 +154,21 @@ table.
 
 ## Open Questions And Follow-Ups
 
-- **Persist analysis options and chart styling** in the project file so reopen
-  is exact (the main remaining gap in D3).
-- Define a **schema migration path** for when `ProjectDocument.version` bumps —
-  today loads only reject newer versions; there is no upgrade step.
+- Define a **schema migration path** for when `ProjectDocument.version` bumps
+  again — today loads reject newer versions and read older ones by treating new
+  fields as optional, but there is no explicit upgrade step for structural
+  changes.
+- **Persist multi-panel layout specs** in the project file (today the staged
+  panels live only in the running session; the composed figure and its manifest
+  are exported, but the layout itself is not saved).
 - Make **grouped tables first-class** (currently parsed but not a first-class
   table kind).
-- Remaining MVP/V1 work (XLSX import, editable table + undo, multi-panel layout
-  and export manifest, signed/notarized DMG) is tracked in the
-  [roadmap](./product/mvp-roadmap.md), not here.
+- **XLSX import scope**: the reader handles a single sheet, shared/inline
+  strings, and numbers; multi-sheet selection, styled/date cells, and formulas
+  (beyond their cached value) are out of scope for now.
+- Ship the **signed/notarized DMG**: the pipeline is scripted in
+  `build-app.sh`; running it needs an Apple Developer ID credential. Tracked in
+  the [roadmap](./product/mvp-roadmap.md).
 
 ## Build, Test, Run
 
@@ -162,5 +178,10 @@ swift build                 # build the library + CLI
 ./scripts/build-app.sh      # build BenchGraph.app (release; pass `debug` for faster builds)
 open BenchGraph.app         # launch the desktop app
 ```
+
+`build-app.sh` produces an ad-hoc-signed bundle by default. For a distributable
+build, set `DEVELOPER_ID_APP` (hardened-runtime Developer ID signing),
+`MAKE_DMG=1` (package a DMG), and `NOTARY_PROFILE` (submit to `notarytool` and
+staple). See the header of `scripts/build-app.sh` for the exact variables.
 
 See the repository's top-level `README.md` for CLI command examples.

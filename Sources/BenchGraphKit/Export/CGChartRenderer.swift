@@ -102,6 +102,48 @@ public struct CGChartRenderer {
         }
     }
 
+    // MARK: - Dispatch + multi-panel composition
+
+    /// Draw any figure request into an existing context at this renderer's
+    /// configured size, without painting a background. The multi-panel
+    /// compositor translates the context per cell and calls this.
+    public func draw(_ request: FigureExport.Request, in ctx: CGContext) {
+        switch request {
+        case let .bars(title, yLabel, groups, brackets):
+            drawBars(ctx, title: title, yLabel: yLabel, groups: groups, brackets: brackets)
+        case let .box(title, yLabel, groups, brackets):
+            drawBoxes(ctx, title: title, yLabel: yLabel, groups: groups, brackets: brackets)
+        case let .violin(title, yLabel, groups, brackets):
+            drawViolins(ctx, title: title, yLabel: yLabel, groups: groups, brackets: brackets)
+        case let .scatter(title, xLabel, yLabel, series, curve, logX):
+            drawScatter(ctx, title: title, xLabel: xLabel, yLabel: yLabel,
+                        series: series, curve: curve, logX: logX)
+        }
+    }
+
+    /// Compose several panels into one figure. `self` must be sized to the whole
+    /// canvas (see `FigureLayout.Spec.totalSize`); each panel is drawn into its
+    /// cell with a bold label (A, B, C …) above it.
+    public func composite(format: Format, panels: [FigureLayout.Panel], layout: FigureLayout.Spec) -> Data? {
+        render(format: format) { ctx in
+            let total = layout.totalSize(panelCount: panels.count)
+            for (i, panel) in panels.enumerated() {
+                let cell = layout.cellRect(index: i)              // top-left origin
+                let panelBottomCG = total.h - (cell.minY + layout.labelBand + layout.panelHeight)
+                ctx.saveGState()
+                ctx.translateBy(x: cell.minX, y: panelBottomCG)
+                CGChartRenderer(width: layout.panelWidth, height: layout.panelHeight, theme: theme)
+                    .draw(panel.request, in: ctx)
+                ctx.restoreGState()
+                if !panel.label.isEmpty {
+                    let labelYCG = panelBottomCG + layout.panelHeight + 4
+                    drawText(ctx, panel.label, at: CGPoint(x: cell.minX + 2, y: labelYCG),
+                             size: 15, align: .left, bold: true, color: textColor)
+                }
+            }
+        }
+    }
+
     // MARK: - Backends
 
     private func render(format: Format, draw: (CGContext) -> Void) -> Data? {

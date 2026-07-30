@@ -1,7 +1,7 @@
 import Foundation
 
 /// A single named numeric output of an analysis (estimate, statistic, p-value…).
-public struct ResultValue: Sendable, Codable {
+public struct ResultValue: Sendable, Codable, Equatable {
     public let label: String
     public let value: Double
     public init(_ label: String, _ value: Double) {
@@ -16,7 +16,7 @@ public struct ResultValue: Sendable, Codable {
 /// formula, confidence intervals, multiple-comparison correction, excluded
 /// rows, and exact test version." This type carries exactly that, so the UI
 /// (or CLI) never has to reverse-engineer how a number was produced.
-public struct AnalysisResult: Sendable, Codable {
+public struct AnalysisResult: Sendable, Codable, Equatable {
     /// Human-readable analysis name, e.g. "Unpaired t test (Welch)".
     public let analysis: String
     /// Model formula or method, e.g. "Welch's t = (m1 - m2) / SE".

@@ -7,7 +7,12 @@ import Foundation
 public struct ProjectDocument: Codable, Equatable {
 
     /// Current on-disk schema version. Bump when the shape changes.
-    public static let currentVersion = 1
+    ///
+    /// v2 adds the chart/analysis presentation options so a saved project
+    /// reopens *exactly* as configured, not just with its data and analysis.
+    /// The new fields are optional, so v1 files still load (options come back
+    /// nil and the app falls back to its defaults).
+    public static let currentVersion = 2
 
     /// Conventional file extension for project files.
     public static let fileExtension = "benchgraph"
@@ -25,11 +30,30 @@ public struct ProjectDocument: Codable, Equatable {
     /// Engine version that wrote the file, for provenance.
     public var savedWithEngine: String
 
+    // MARK: Presentation options (schema v2+, optional for back-compat)
+
+    /// Which spread statistic the bar error bars represent (SD / SEM / 95% CI).
+    public var errorBar: ErrorBarKind?
+    /// How column data is drawn, stored as an opaque UI token (e.g. the app's
+    /// "Bars" / "Box" / "Violin"); the engine treats it as a plain string.
+    public var plotStyle: String?
+    /// Whether significance brackets are drawn on column figures.
+    public var showSignificance: Bool?
+    /// Name of the journal theme preset applied to the figure.
+    public var themeName: String?
+    /// Whether a regression/dose-response figure shows residuals instead of the fit.
+    public var showResiduals: Bool?
+
     public init(
         tableKind: TableKind,
         data: String,
         hasHeader: Bool,
         analysisName: String,
+        errorBar: ErrorBarKind? = nil,
+        plotStyle: String? = nil,
+        showSignificance: Bool? = nil,
+        themeName: String? = nil,
+        showResiduals: Bool? = nil,
         version: Int = ProjectDocument.currentVersion,
         savedWithEngine: String = BenchGraph.version
     ) {
@@ -39,6 +63,11 @@ public struct ProjectDocument: Codable, Equatable {
         self.hasHeader = hasHeader
         self.analysisName = analysisName
         self.savedWithEngine = savedWithEngine
+        self.errorBar = errorBar
+        self.plotStyle = plotStyle
+        self.showSignificance = showSignificance
+        self.themeName = themeName
+        self.showResiduals = showResiduals
     }
 
     public enum LoadError: Error, Equatable {

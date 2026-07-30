@@ -41,8 +41,7 @@ public struct CSVImporter {
         hasHeader: Bool = true,
         delimiter: Delimiter = .auto
     ) -> DataTable {
-        let sep = delimiter.character(for: text)
-        let rows = splitRows(text).map { parseLine($0, separator: sep) }
+        let rows = tokenize(text, delimiter: delimiter)
         guard !rows.isEmpty else { return DataTable(kind: kind, columns: []) }
 
         let width = rows.map(\.count).max() ?? 0
@@ -70,6 +69,21 @@ public struct CSVImporter {
             columns.append(DataColumn(name: headerNames[col], values: values))
         }
         return DataTable(kind: kind, columns: columns)
+    }
+
+    /// Split raw text into rows of string fields, applying the same delimiter
+    /// detection, quote handling, and blank-row dropping as `parse`, but without
+    /// interpreting cells as numbers. The editable table grid uses this so the
+    /// on-screen editor and the numeric parser agree on how data is split.
+    public func tokenize(_ text: String, delimiter: Delimiter = .auto) -> [[String]] {
+        let sep = delimiter.character(for: text)
+        return splitRows(text).map { parseLine($0, separator: sep) }
+    }
+
+    /// The default column name for a column index and table kind (e.g. "X",
+    /// "A", "B" …), exposed so an empty editable grid can seed sensible headers.
+    public func defaultColumnName(for index: Int, kind: TableKind) -> String {
+        defaultName(for: index, kind: kind)
     }
 
     // MARK: - Helpers

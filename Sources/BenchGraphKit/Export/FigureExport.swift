@@ -7,12 +7,22 @@ import Foundation
 /// chooses the palette and fonts and is shared across all formats.
 public enum FigureExport {
 
-    public enum Request {
+    public enum Request: Sendable {
         case bars(title: String, yLabel: String, groups: [SVGRenderer.BarGroup], brackets: [BarBracket])
         case box(title: String, yLabel: String, groups: [SVGRenderer.BoxGroup], brackets: [BarBracket])
         case violin(title: String, yLabel: String, groups: [SVGRenderer.ViolinGroup], brackets: [BarBracket])
         case scatter(title: String, xLabel: String, yLabel: String,
                      series: [SVGRenderer.Series], curve: [(x: Double, y: Double)]?, logX: Bool)
+
+        /// The figure's title, regardless of chart type.
+        public var title: String {
+            switch self {
+            case let .bars(t, _, _, _), let .box(t, _, _, _), let .violin(t, _, _, _):
+                return t
+            case let .scatter(t, _, _, _, _, _):
+                return t
+            }
+        }
     }
 
     /// File extensions this exporter understands.

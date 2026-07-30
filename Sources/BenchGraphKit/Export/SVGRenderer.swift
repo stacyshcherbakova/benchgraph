@@ -271,6 +271,24 @@ public struct SVGRenderer {
         return document(body)
     }
 
+    // MARK: - Dispatch
+
+    /// Render any figure request to a standalone SVG document. Used by the
+    /// multi-panel compositor so every panel goes through the same code paths as
+    /// a single-figure export.
+    public func render(_ request: FigureExport.Request) -> String {
+        switch request {
+        case let .bars(title, yLabel, groups, brackets):
+            return barChart(title: title, yLabel: yLabel, groups: groups, brackets: brackets)
+        case let .box(title, yLabel, groups, brackets):
+            return boxPlot(title: title, yLabel: yLabel, groups: groups, brackets: brackets)
+        case let .violin(title, yLabel, groups, brackets):
+            return violinPlot(title: title, yLabel: yLabel, groups: groups, brackets: brackets)
+        case let .scatter(title, xLabel, yLabel, series, curve, logX):
+            return scatter(title: title, xLabel: xLabel, yLabel: yLabel, series: series, curve: curve, logX: logX)
+        }
+    }
+
     // MARK: - Shared category-plot helpers
 
     /// A y scale that reserves a band at the top for significance brackets so

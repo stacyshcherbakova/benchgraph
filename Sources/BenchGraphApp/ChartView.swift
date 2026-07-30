@@ -11,7 +11,7 @@ struct ChartView: View {
     let spec: ChartSpec
     var theme: Theme = .default
 
-    private let inset = EdgeInsets(top: 16, leading: 52, bottom: 40, trailing: 16)
+    private let inset = EdgeInsets(top: 28, leading: 64, bottom: 56, trailing: 32)
     /// Vertical spacing between stacked significance brackets.
     private let bracketStep: CGFloat = 16
 

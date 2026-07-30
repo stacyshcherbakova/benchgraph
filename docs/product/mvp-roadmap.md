@@ -1,14 +1,18 @@
 # MVP And Product Roadmap
 
-Source check date: 2026-05-28.
+Source check date: 2026-07-03.
 
 ## Current Status
 
-**Stage: MVP build phase, working toward V1.** The analysis, graphs, export, and
-provenance core of the MVP is essentially complete. Remaining MVP gaps:
-XLSX import, an editable data table + undo/redo, multi-panel layout + export
-manifest, copy-as-vector, residual plots, and a signed/notarized DMG. See the
-ticked [MVP Scope](#mvp-scope) and [Version Roadmap](#version-roadmap) below.
+**Stage: MVP scope code-complete; preparing the first V1 release.** The
+analysis, graphs, export, and provenance core is complete, and the previously
+outstanding MVP items are now built: an editable data table with undo/redo,
+persisted analysis/chart options, multi-panel layout + export manifest, XLSX
+import, copy-as-vector, and residual plots. The `.benchgraph` document type is
+registered and the signing/notarization/DMG pipeline is scripted. The only thing
+between here and a shippable V1 build is running that pipeline with an Apple
+Developer ID credential. See the ticked [MVP Scope](#mvp-scope) and
+[Version Roadmap](#version-roadmap) below.
 
 ## Product Thesis
 
@@ -20,13 +24,15 @@ Do not clone every GraphPad Prism feature. Build the smallest credible workflow 
 
 As of the current build, a Swift implementation exists: a tested engine
 (`BenchGraphKit`), a `benchgraph` CLI, and a SwiftUI app (`BenchGraph.app`).
-The suite has 56 tests (39 SciPy-validated stats fixtures plus figure-rendering
-and project-file tests).
+The suite has 86 tests (39 SciPy-validated stats fixtures plus figure-rendering,
+multi-panel, manifest, XLSX-import, editable-grid, and project-file tests).
 
 | MVP area | Status |
 | --- | --- |
 | Native macOS app (SwiftUI window) | Done |
-| Paste + CSV/TSV import, parsed preview | Done |
+| Editable data table (typeable grid) + undo/redo | Done |
+| Paste + CSV/TSV import | Done |
+| XLSX import (dependency-free ZIP+XML reader) | Done |
 | Column / XY templates | Done (grouped: parsed, not first-class) |
 | Descriptive stats, t tests (paired/unpaired, Student/Welch) | Done |
 | One-way ANOVA + post-hoc (Bonferroni, Holm) | Done |
@@ -34,15 +40,20 @@ and project-file tests).
 | Pearson / Spearman, linear regression | Done |
 | 4PL dose-response + standard-curve interpolation | Done |
 | Normality test (D'Agostino-Pearson) | Done |
+| Residual plots (regression / dose-response) | Done |
 | Graphs: scatter, bar+error, box, violin, XY, dose-response curve | Done |
-| Export: SVG, PDF, PNG, TIFF | Done |
-| Project file (`.benchgraph`, versioned JSON, save/open) | Done |
-| Live provenance (assumptions, warnings, excluded, formula) | Done |
-| XLSX import | Not started |
 | Box / violin plots, journal theme presets | Done |
-| Significance annotations on graphs | Done; multi-panel layout not started |
-| Selectable error bars (SD/SEM/CI) | Done; export manifest not started |
-| Signed + notarized DMG | Not started (needs Apple Developer ID) |
+| Selectable error bars (SD/SEM/CI) | Done |
+| Significance annotations on graphs | Done |
+| Export: SVG, PDF, PNG, TIFF | Done |
+| Copy figure as vector (PDF + SVG to clipboard) | Done |
+| Multi-panel layout with A/B/C labels | Done |
+| Export manifest (data source, options, app version) | Done |
+| Project file (`.benchgraph`, versioned JSON, save/open) | Done |
+| Persist analysis + chart options in project file | Done (schema v2) |
+| `.benchgraph` document type registered (double-click to open) | Done |
+| Live provenance (assumptions, warnings, excluded, formula) | Done |
+| Signed + notarized DMG | Pipeline scripted; needs Apple Developer ID to run |
 
 ## MVP
 
@@ -61,7 +72,8 @@ A signed, notarized macOS DMG that lets a user create a local project, enter/imp
 - Data entry and import:
   - [x] Paste from Excel/Numbers.
   - [x] CSV/TSV import.
-  - [ ] Basic XLSX import if feasible without large dependency risk.
+  - [x] Editable data table (typeable grid) with add/remove rows and columns.
+  - [x] Basic XLSX import if feasible without large dependency risk. *(dependency-free ZIP+XML reader)*
   - [x] Column, grouped, and XY table templates. *(partial: grouped is parsed but not a first-class template)*
 - Analysis:
   - [x] Descriptive statistics.
@@ -71,7 +83,7 @@ A signed, notarized macOS DMG that lets a user create a local project, enter/imp
   - [x] Pearson/Spearman correlation.
   - [x] Linear regression.
   - [x] Nonlinear regression for standard curve and 4-parameter logistic dose-response.
-  - [x] Normality checks and residual plots where relevant. *(partial: normality done; no residual plot yet)*
+  - [x] Normality checks and residual plots where relevant.
 - Graphs:
   - [x] Scatter, column/bar, box, violin, line/XY, dose-response curve.
   - [x] Error bars: SD, SEM, CI.
@@ -79,13 +91,14 @@ A signed, notarized macOS DMG that lets a user create a local project, enter/imp
   - [x] Theme presets for common journal-style output.
 - Layout and export:
   - [x] Single graph export: PDF, SVG, PNG, TIFF.
-  - [ ] Copy as vector where possible.
-  - [ ] Simple multi-panel layout with labels A/B/C.
-  - [ ] Export manifest that records data source, analysis options, and app version.
+  - [x] Copy as vector where possible. *(PDF + SVG to the clipboard)*
+  - [x] Simple multi-panel layout with labels A/B/C.
+  - [x] Export manifest that records data source, analysis options, and app version.
 - Provenance:
   - [x] Recompute analyses when source data or options change.
   - [x] Show assumptions, excluded values, model formula, P value adjustment, CI level, and warnings.
   - [x] Keep analysis outputs linked to exact table and graph.
+  - [x] Undo/redo across table and option edits.
 
 ### Out Of Scope For MVP
 
@@ -102,15 +115,15 @@ A signed, notarized macOS DMG that lets a user create a local project, enter/imp
 
 The product is credible only if it has:
 
-- [x] A polished Mac-native data table and graph editing experience. *(partial: read-only parsed preview + raw-text editor; no editable spreadsheet grid)*
+- [x] A polished Mac-native data table and graph editing experience. *(editable spreadsheet-style grid with add/remove rows and columns, plus a live native chart)*
 - [x] Accurate calculations for included tests, with independent test fixtures.
 - [x] Dose-response and standard-curve workflows.
-- [x] Robust import/paste from spreadsheet data. *(partial: CSV/TSV/paste done; XLSX not yet)*
+- [x] Robust import/paste from spreadsheet data. *(CSV/TSV/paste and XLSX)*
 - [x] High-quality vector export.
-- [x] Persistent project files that reopen exactly.
+- [x] Persistent project files that reopen exactly. *(schema v2 also persists analysis + chart options)*
 - [x] Linked data -> analysis -> graph updates.
 - [x] Clear warnings for invalid assumptions, missing data, unequal group sizes, and ambiguous repeated-measures structure.
-- [ ] Undo/redo across table, analysis, and graph edits.
+- [x] Undo/redo across table, analysis, and graph edits.
 
 ## Core Workflows
 
@@ -154,7 +167,9 @@ The product is credible only if it has:
 
 ### V1: Local Scientific Figure Workbench
 
-**Status: In progress (active target) — MVP scope not yet complete.**
+**Status: In progress (active target) — MVP scope code-complete; remaining work
+is the signed/notarized release (needs an Apple Developer ID) and release
+polish.**
 
 Target: solo researchers and small labs.
 
@@ -207,13 +222,13 @@ The MVP architecture is now built; see the
 
 - App: Swift + SwiftUI, with a UI-agnostic engine (`BenchGraphKit`) shared by the app and CLI; AppKit used where needed for document windows, menu commands, and export.
 - Rendering: a custom vector-first renderer — a deterministic, text-based SVG renderer plus a Core Graphics renderer for PDF/PNG/TIFF — rather than relying on Swift Charts for export control.
-- Data model: a single versioned JSON project document holding the raw data plus the analysis specification. Persisting full graph/layout specs is planned, not yet done.
-- File format: a plain, human-readable, key-sorted JSON `.benchgraph` file — explicit, inspectable, and diffable, with no opaque blobs. (The earlier SQLite / package-directory option was considered but not adopted.)
+- Data model: a single versioned JSON project document (schema v2) holding the raw data, the analysis specification, and the presentation options (error-bar type, plot style, theme, significance/residual toggles), so a project reopens exactly. Full multi-panel layout specs are not yet persisted.
+- File format: a plain, human-readable, key-sorted JSON `.benchgraph` file — explicit, inspectable, and diffable, with no opaque blobs. The `.benchgraph` document type is registered with macOS (exported UTI + `CFBundleDocumentTypes`), so projects open on double-click. (The earlier SQLite / package-directory option was considered but not adopted.)
 - Stats engine: a small validated native Swift core with **zero external dependencies** (self-contained distributions) and independent SciPy reference fixtures. Re-evaluate an embedded R or Rust/C++ numerical core before V2.
 
 Still forward-looking:
 
-- Distribution: Developer ID signing, notarized DMG, optional Sparkle-style signed updates.
+- Distribution: `scripts/build-app.sh` scripts Developer ID signing (hardened runtime), notarization (`notarytool`), and DMG packaging behind environment variables; running it end-to-end needs an Apple Developer ID credential. Optional Sparkle-style signed updates remain future work.
 - Privacy: default offline. Any telemetry, crash reporting, licensing, or cloud sync must be explicit and separable.
 
 ## Product Risks
@@ -240,5 +255,5 @@ Still forward-looking:
 - Should V1 include custom nonlinear equations, or only curated models?
 - Should the first pricing model be personal/lab perpetual, subscription, or hybrid?
 - Should R/Python export be in MVP or V1?
-- Is XLSX import critical for MVP, or can CSV/paste cover the first release?
+- ~~Is XLSX import critical for MVP?~~ Resolved: basic XLSX import shipped in the MVP via a dependency-free reader.
 - Does the target buyer value App Store distribution, or is direct DMG expected?
