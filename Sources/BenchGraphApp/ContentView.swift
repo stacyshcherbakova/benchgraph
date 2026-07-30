@@ -10,6 +10,7 @@ struct ContentView: View {
     @StateObject private var model = AppModel()
     @State private var confirmingClearPanels = false
     @State private var helpTopic: HelpTopic?
+    @State private var window: NSWindow?
 
     var body: some View {
         HSplitView {
@@ -58,19 +59,53 @@ struct ContentView: View {
             }
         }
         .tint(brandAccent)
+        .background(WindowAccessor { window = $0 })
+        .navigationTitle(model.documentName)
+        .onReceive(model.$hasUnsavedChanges) { dirty in
+            // The close button's dot and the "unsaved changes" behaviour macOS
+            // gets for free from a document window; this app is a plain
+            // WindowGroup, so it is set explicitly.
+            window?.isDocumentEdited = dirty
+        }
         .onReceive(NotificationCenter.default.publisher(for: .openBenchGraphProject)) { note in
-            if let url = note.object as? URL, let doc = try? ProjectDocument.load(from: url) {
-                model.apply(doc)
+            // Only the key window loads it. This used to broadcast to every open
+            // window, so opening one project replaced the contents of all of
+            // them and destroyed unsaved work in each.
+            guard isKeyWindow, let url = note.object as? URL else { return }
+            guard confirmDiscardingChanges(action: "Open “\(url.lastPathComponent)”") else { return }
+            do {
+                model.apply(try ProjectDocument.load(from: url), from: url)
+            } catch {
+                presentError("Could not open that project.", error)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .benchGraphFileCommand)) { note in
+            guard isKeyWindow, let raw = note.object as? String,
+                  let command = FileCommand(rawValue: raw) else { return }
+            switch command {
+            case .new:          newProject()
+            case .open:         openProject()
+            case .save:         saveProject()
+            case .saveAs:       saveProjectAs()
+            case .importData:   importFile()
+            case .exportChart:  if model.chart != .none { exportFigure() }
+            case .exportPanels: if model.panelCount > 0 { exportLayout() }
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .showBenchGraphHelp)) { note in
-            if let slug = note.object as? String {
-                helpTopic = BenchGraphDocs.topic(slug)
-            }
+            guard isKeyWindow, let slug = note.object as? String else { return }
+            helpTopic = BenchGraphDocs.topic(slug)
         }
         .sheet(item: $helpTopic) { topic in
             HelpSheet(topic: topic)
         }
+    }
+
+    /// Whether this view's window is the one the user is working in. Menu
+    /// commands and Finder-opened documents act only on that window.
+    private var isKeyWindow: Bool {
+        guard let window else { return NSApp.keyWindow == nil }
+        return window.isKeyWindow
     }
 
     // MARK: - Left: data entry + editable table
@@ -372,24 +407,76 @@ struct ContentView: View {
         UTType(filenameExtension: ProjectDocument.fileExtension) ?? .json
     }
 
+    /// ⌘S: write back to the file this project came from, asking for a location
+    /// only the first time.
     private func saveProject() {
+        guard let url = model.documentURL else { return saveProjectAs() }
+        write(to: url)
+    }
+
+    private func saveProjectAs() {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [projectType]
-        panel.nameFieldStringValue = "untitled.\(ProjectDocument.fileExtension)"
+        panel.nameFieldStringValue = model.documentURL?.lastPathComponent
+            ?? "untitled.\(ProjectDocument.fileExtension)"
         panel.canCreateDirectories = true
-        if panel.runModal() == .OK, let url = panel.url {
-            try? model.makeDocument().save(to: url)
+        if panel.runModal() == .OK, let url = panel.url { write(to: url) }
+    }
+
+    private func write(to url: URL) {
+        do {
+            try model.makeDocument().save(to: url)
+            model.markSaved(to: url)
+        } catch {
+            presentError("Could not save the project.", error)
         }
     }
 
     private func openProject() {
+        guard confirmDiscardingChanges(action: "Open another project") else { return }
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [projectType]
         panel.allowsMultipleSelection = false
-        if panel.runModal() == .OK, let url = panel.url,
-           let doc = try? ProjectDocument.load(from: url) {
-            model.apply(doc)
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            model.apply(try ProjectDocument.load(from: url), from: url)
+        } catch {
+            presentError("Could not open that project.", error)
         }
+    }
+
+    private func newProject() {
+        guard confirmDiscardingChanges(action: "Start a new project") else { return }
+        model.newProject()
+    }
+
+    /// Ask before throwing away unsaved work. Returns whether to proceed.
+    private func confirmDiscardingChanges(action: String) -> Bool {
+        guard model.hasUnsavedChanges else { return true }
+        let alert = NSAlert()
+        alert.messageText = "\(action) without saving?"
+        alert.informativeText = "“\(model.documentName)” has unsaved changes that will be lost."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Save…")
+        alert.addButton(withTitle: "Discard")
+        alert.addButton(withTitle: "Cancel")
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            saveProject()
+            return !model.hasUnsavedChanges   // cancelled the save sheet → stop
+        case .alertSecondButtonReturn:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func presentError(_ message: String, _ error: Error) {
+        let alert = NSAlert()
+        alert.messageText = message
+        alert.informativeText = String(describing: error)
+        alert.alertStyle = .warning
+        alert.runModal()
     }
 
     private func exportFigure() {
@@ -438,6 +525,25 @@ private extension ContentView {
     }
     func writeManifest(_ manifest: LayoutManifest, besideFigure url: URL) {
         writeManifest(try? manifest.encoded(), besideFigure: url)
+    }
+}
+
+// MARK: - Window access
+
+/// Reaches the `NSWindow` behind a SwiftUI view, so this plain `WindowGroup` can
+/// show the edited dot and tell whether it is the key window. A `DocumentGroup`
+/// would provide both, but the app is not document-based.
+private struct WindowAccessor: NSViewRepresentable {
+    let onResolve: (NSWindow?) -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async { onResolve(view.window) }
+        return view
+    }
+
+    func updateNSView(_ view: NSView, context: Context) {
+        DispatchQueue.main.async { onResolve(view.window) }
     }
 }
 

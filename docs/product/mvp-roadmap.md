@@ -65,6 +65,7 @@ figure-serialisation, panel-order, interpolation, and help-catalog tests.
 | `.benchgraph` document type registered (double-click to open) | Done |
 | Live provenance (assumptions, warnings, excluded, formula) | Done |
 | In-app Help menu + published user guide | Done |
+| File menu, standard shortcuts, unsaved-changes tracking | Done |
 | Signed + notarized DMG | Pipeline scripted; needs Apple Developer ID to run |
 
 ## MVP

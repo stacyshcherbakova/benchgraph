@@ -1,0 +1,70 @@
+name: Build and test
+
+# Build the package, run the test suite, and assemble the app bundle. The app
+# target has no tests of its own (it is an executable target with `@main`, which
+# cannot be linked into a test bundle), so building the bundle is what catches
+# regressions in the SwiftUI layer.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - 'requirements-docs.txt'
+      - '**/*.md'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          swift --version
+          xcodebuild -version
+
+      - name: Build
+        run: swift build --build-tests
+
+      # scripts/test.sh adds the Testing.framework search paths needed on a
+      # Command-Line-Tools-only machine and falls through to plain `swift test`
+      # when full Xcode is present, as it is on this runner. Running it here
+      # keeps CI and local development on exactly one command.
+      - name: Test
+        run: ./scripts/test.sh
+
+      # The help catalog is bound to docs/guide/*.md by HelpTopicTests, so a
+      # renamed or deleted guide page fails the step above. Assert the pages are
+      # present explicitly too, in case that test is ever made lenient.
+      - name: Check the guide pages the app links to exist
+        run: |
+          for slug in getting-started choosing-an-analysis multi-panel-figures exporting-and-provenance; do
+            test -f "docs/guide/$slug.md" || { echo "missing docs/guide/$slug.md"; exit 1; }
+          done
+
+      - name: Build the app bundle
+        run: ./scripts/build-app.sh debug
+
+      - name: Smoke-test the CLI
+        run: |
+          set -euo pipefail
+          BIN=.build/debug/benchgraph
+          "$BIN" describe examples/groups.csv > /dev/null
+          "$BIN" posthoc examples/groups.csv > /dev/null
+          "$BIN" anova examples/multipanel/B-treatment-groups.xlsx > /dev/null
+          "$BIN" doseresponse examples/dose-response.csv --interpolate "50, 75" \
+            | grep -q "x at y=75" || { echo "interpolation dropped a target"; exit 1; }
+          "$BIN" regress examples/dose-response.csv --residuals --out "$RUNNER_TEMP/res.svg"
+          test -s "$RUNNER_TEMP/res.svg"

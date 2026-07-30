@@ -64,7 +64,7 @@ enum Analysis: String, CaseIterable, Identifiable, Sendable {
         case .wilcoxon, .tTestPaired:
             return "First two columns, paired row by row."
         case .normality:
-            return "First column is tested for normality."
+            return "Every column is tested for normality."
         case .pearson, .spearman, .linear, .fourPL:
             return "First column = X, second = Y. One (x, y) pair per row."
         default:
@@ -195,6 +195,48 @@ final class AppModel: ObservableObject {
     let undoManager = UndoManager()
     private var interactiveSnapshot: EditState?
 
+    // MARK: - Document identity
+
+    /// Where this session was last saved or opened from, so ⌘S can write back
+    /// without asking. Nil until the project has been saved once.
+    @Published private(set) var documentURL: URL?
+    /// Whether there are changes since the last save. Drives the window's edited
+    /// dot and the warning on quit.
+    @Published private(set) var hasUnsavedChanges = false
+
+    /// The window title: the project's file name, or "Untitled".
+    var documentName: String {
+        documentURL?.deletingPathExtension().lastPathComponent ?? "Untitled"
+    }
+
+    /// Record that the session now matches what is on disk at `url`.
+    func markSaved(to url: URL) {
+        documentURL = url
+        hasUnsavedChanges = false
+    }
+
+    /// Record that the session diverges from disk. Called from every mutation
+    /// path, so it is the one place "is this dirty?" is decided.
+    private func markDirty() {
+        if !hasUnsavedChanges { hasUnsavedChanges = true }
+    }
+
+    /// Start a fresh, empty project in this window.
+    func newProject() {
+        let previous = snapshot()
+        let previousPanels = panelSnapshot()
+        grid = EditGrid.empty(kind: analysis.tableKind)
+        stagedPanels = []
+        layoutColumns = 2
+        interpolateText = ""
+        thumbnailCache = [:]
+        documentURL = nil
+        hasUnsavedChanges = false
+        recompute()
+        registerUndo(previous)
+        registerPanelUndo(previousPanels)
+    }
+
     /// The current data as CSV text, derived from the grid and header flag. This
     /// is what the analysis parser and the project file consume.
     var csvText: String { grid.csv(includeHeader: hasHeader) }
@@ -237,11 +279,13 @@ final class AppModel: ObservableObject {
     func updateCell(_ row: Int, _ col: Int, _ value: String) {
         grid.setCell(row, col, value)
         recompute()
+        markDirty()
     }
 
     func renameColumn(_ col: Int, to name: String) {
         grid.renameColumn(col, to: name)
         recompute()
+        markDirty()
     }
 
     /// Snapshot before an interactive (typing) edit begins, so the whole session
@@ -312,7 +356,25 @@ final class AppModel: ObservableObject {
     func setColumnPlot(_ value: ColumnPlot) { guard value != columnPlot else { return }; edit { columnPlot = value } }
     func setShowSignificance(_ value: Bool) { guard value != showSignificance else { return }; edit { showSignificance = value } }
     func setShowResiduals(_ value: Bool) { guard value != showResiduals else { return }; edit { showResiduals = value } }
-    func setTheme(_ value: Theme) { guard value != theme else { return }; edit { theme = value } }
+    /// Changing the theme restyles the staged panels too. Thumbnails are
+    /// rendered at staging time, so without this they keep the old palette until
+    /// the project is reopened, while the exported figure uses the new one.
+    func setTheme(_ value: Theme) {
+        guard value != theme else { return }
+        edit { theme = value }
+        restyleThumbnails()
+    }
+
+    private func restyleThumbnails() {
+        guard !stagedPanels.isEmpty else { return }
+        stagedPanels = stagedPanels.map { panel in
+            StagedPanel(id: panel.id, request: panel.request, title: panel.title,
+                        thumbnailPNG: FigureExport.data(panel.request,
+                                                        pathExtension: "png", theme: theme),
+                        sourceData: panel.sourceData)
+        }
+        thumbnailCache = [:]
+    }
 
     /// Live edit of the 4PL interpolation field. Recomputes per keystroke like a
     /// grid cell; undo granularity is the whole typing session, bracketed by
@@ -321,6 +383,7 @@ final class AppModel: ObservableObject {
         guard value != interpolateText else { return }
         interpolateText = value
         recompute()
+        markDirty()
     }
 
     /// Whether the current analysis has a fit whose residuals can be plotted.
@@ -339,6 +402,7 @@ final class AppModel: ObservableObject {
         mutate()
         recompute()
         registerUndo(previous)
+        markDirty()
     }
 
     private func snapshot() -> EditState {
@@ -357,7 +421,10 @@ final class AppModel: ObservableObject {
         showSignificance = state.showSignificance
         showResiduals = state.showResiduals
         interpolateText = state.interpolateText
-        theme = Theme.named(state.themeName) ?? .default
+        let restoredTheme = Theme.named(state.themeName) ?? .default
+        let themeChanged = restoredTheme != theme
+        theme = restoredTheme
+        if themeChanged { restyleThumbnails() }
         recompute()
     }
 
@@ -386,6 +453,7 @@ final class AppModel: ObservableObject {
         mutate()
         pruneThumbnailCache()
         registerPanelUndo(previous)
+        markDirty()
     }
 
     private func panelSnapshot() -> PanelState {
@@ -395,6 +463,9 @@ final class AppModel: ObservableObject {
     private func applyPanels(_ state: PanelState) {
         stagedPanels = state.panels
         layoutColumns = state.layoutColumns
+        // A snapshot may predate a theme change, so re-render rather than
+        // restoring thumbnails drawn in a palette that is no longer current.
+        restyleThumbnails()
         pruneThumbnailCache()
     }
 
@@ -427,7 +498,14 @@ final class AppModel: ObservableObject {
         do {
             switch analysis {
             case .descriptive:
-                result = Descriptive.analyze(parsed.columns[0])
+                // Every column, matching the CLI — the hint promises "one group
+                // per column", and summarising only the first silently hid the
+                // rest.
+                let per = parsed.columns.map { (name: $0.name, result: Descriptive.analyze($0)) }
+                result = AnalysisResult.perColumn(
+                    "Descriptive statistics",
+                    formula: per.first?.result.formula ?? "",
+                    columns: per)
                 chart = columnChart(parsed)
             case .tTestWelch:
                 let (a, b) = try twoColumns(parsed)
@@ -470,7 +548,13 @@ final class AppModel: ObservableObject {
                 result = Wilcoxon.signedRank(pairs.map(\.0), pairs.map(\.1))
                 chart = columnChart(parsed, limit: 2)
             case .normality:
-                result = Normality.dagostinoPearson(parsed.columns[0].present)
+                let per = parsed.columns.map {
+                    (name: $0.name, result: Normality.dagostinoPearson($0.present))
+                }
+                result = AnalysisResult.perColumn(
+                    "Normality (D'Agostino-Pearson)",
+                    formula: per.first?.result.formula ?? "",
+                    columns: per)
                 chart = columnChart(parsed, limit: 1)
             case .pearson:
                 let (x, y) = try xyPairs(parsed)
@@ -567,7 +651,7 @@ final class AppModel: ObservableObject {
     /// Restore a loaded project: data, analysis, and (when present) the saved
     /// presentation options and staged panels. Registered as one undo step on
     /// each track, so a load can be undone whole.
-    func apply(_ doc: ProjectDocument) {
+    func apply(_ doc: ProjectDocument, from url: URL? = nil) {
         let previous = snapshot()
         let previousPanels = panelSnapshot()
 
@@ -605,6 +689,13 @@ final class AppModel: ObservableObject {
         recompute()
         registerUndo(previous)
         registerPanelUndo(previousPanels)
+
+        // A freshly loaded project matches what is on disk. Set this last, since
+        // the restores above run through paths that would otherwise mark dirty.
+        if let url {
+            documentURL = url
+            hasUnsavedChanges = false
+        }
     }
 
     /// Describe the current chart for the shared exporter.

@@ -57,7 +57,7 @@ public enum BenchGraphDocs {
                 "Pick an analysis from the menu at the top of the left pane. The grey line under it tells you what shape the data needs.",
                 "Read the result on the right — the value, the formula used, the assumptions it relies on, and any warnings.",
                 "Adjust the chart with the Plot, Error bars, Significance, and Theme controls.",
-                "Press Export chart… to save the figure as SVG, PDF, PNG, or TIFF.",
+                "Press ⌘E (Export chart…) to save the figure as SVG, PDF, PNG, or TIFF, and ⌘S to save the project.",
                 "⌘Z undoes anything, including option changes; ⇧⌘Z redoes."
             ]),
         HelpTopic(

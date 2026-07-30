@@ -1,5 +1,5 @@
 site_name: BenchGraph Docs
-site_description: Research and product planning for a Mac-native, Prism-like scientific analysis and figure app.
+site_description: A Mac-native app for taking experimental data to trustworthy statistics and publication-quality figures, without writing code.
 site_url: https://stacyshcherbakova.github.io/benchgraph/
 docs_dir: docs
 

@@ -78,9 +78,24 @@ To combine several charts into one lettered figure, see
 
 ## 6. Save your work
 
-**Save** writes a `.benchgraph` project holding your data, your options, and any
+**⌘S** writes a `.benchgraph` project holding your data, your options, and any
 staged panels. It is plain, versioned JSON, so it stays readable and diffable.
 Double-clicking one in Finder opens it.
+
+The window title shows the project name, and a dot appears in the close button
+while you have unsaved changes. Quitting or opening another project with unsaved
+work asks first.
+
+## Keyboard shortcuts
+
+| Shortcut | Action |
+| --- | --- |
+| ⌘N / ⌘O | New project / open one |
+| ⌘S / ⇧⌘S | Save / Save As |
+| ⌘I | Import data |
+| ⌘E / ⇧⌘E | Export chart / export panels |
+| ⌘Z / ⇧⌘Z | Undo / redo |
+| ⌘? | Help |
 
 ## Undo covers everything
 

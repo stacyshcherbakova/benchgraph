@@ -210,10 +210,9 @@ table.
   changes. Note that `FigureExport.Request`'s synthesized coding keys are now
   part of the file format: renaming a case or an associated-value label is a
   breaking change, pinned by a test rather than by a hand-written encoder.
-- **Per-panel themes.** The theme is global, so restyling after staging leaves
-  earlier panels' thumbnails drawn in the old theme until the project is
-  reopened. Either re-render thumbnails on a theme change or let each panel
-  carry its own theme.
+- **Per-panel themes.** The theme is global: changing it restyles every staged
+  panel. Letting each panel carry its own theme would allow mixed figures, at
+  the cost of a more complex export path.
 - **Show interpolated points on the dose-response chart.** The values appear in
   the result pane; drawing a marker and dropline would need a new `ChartSpec`
   case supported by all three renderers.
