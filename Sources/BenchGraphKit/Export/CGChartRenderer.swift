@@ -60,7 +60,7 @@ public struct CGChartRenderer {
         format: Format,
         title: String, xLabel: String, yLabel: String,
         series: [SVGRenderer.Series],
-        curve: [(x: Double, y: Double)]? = nil,
+        curve: [PlotPoint]? = nil,
         logX: Bool = false
     ) -> Data? {
         render(format: format) { ctx in
@@ -195,7 +195,7 @@ public struct CGChartRenderer {
     // MARK: - Scatter / curve
 
     private func drawScatter(_ ctx: CGContext, title: String, xLabel: String, yLabel: String,
-                             series: [SVGRenderer.Series], curve: [(x: Double, y: Double)]?, logX: Bool) {
+                             series: [SVGRenderer.Series], curve: [PlotPoint]?, logX: Bool) {
         let all = series.flatMap { $0.points } + (curve ?? [])
         guard !all.isEmpty else { return }
         let xs = all.map { logX ? log10(Swift.max($0.x, 1e-12)) : $0.x }

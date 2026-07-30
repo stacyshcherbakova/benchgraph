@@ -117,6 +117,25 @@ public enum FourPL {
                    rSquared: rSquared, iterations: iteration, converged: converged)
     }
 
+    /// Parse a comma-separated list of response values to interpolate, e.g.
+    /// `"50, 75"` from the app's field or the CLI's `--interpolate`.
+    ///
+    /// Each component is trimmed before parsing: `Double.init?` rejects leading
+    /// whitespace, so `"50, 75"` would otherwise silently yield only `50`.
+    /// Unparseable and empty components are skipped.
+    public static func parseTargets(_ text: String) -> [Double] {
+        text.split(separator: ",")
+            .compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
+    }
+
+    /// Compact display for a response value in a label or warning: drops a
+    /// trailing `.0` so a whole number reads as `50`, not `50.0`.
+    private static func fmt(_ v: Double) -> String {
+        v == v.rounded() && Swift.abs(v) < 1e15
+            ? String(Int(v))
+            : String(format: "%g", v)
+    }
+
     /// Provenance-rich result; optionally interpolate unknown responses.
     public static func analyze(
         x: [Double],
@@ -132,12 +151,18 @@ public enum FourPL {
             ResultValue("R squared", f.rSquared),
             ResultValue("Iterations", Double(f.iterations))
         ]
+        var warnings: [String] = []
         for target in interpolateY {
             if let xv = f.interpolate(y: target) {
-                values.append(ResultValue("x at y=\(target)", xv))
+                values.append(ResultValue("x at y=\(fmt(target))", xv))
+            } else {
+                // Silently dropping the target would leave the user thinking the
+                // interpolation simply had no answer, so say why.
+                let lo = Swift.min(f.a, f.d), hi = Swift.max(f.a, f.d)
+                warnings.append("y = \(fmt(target)) is outside the fitted range "
+                                + "(\(fmt(lo)) to \(fmt(hi))); no x could be interpolated.")
             }
         }
-        var warnings: [String] = []
         if !f.converged { warnings.append("Fit did not fully converge; inspect residuals and starting values.") }
         if x.count < 5 { warnings.append("Few points for a 4-parameter model (n = \(x.count)).") }
 

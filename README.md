@@ -3,7 +3,8 @@
 Working name (provisional). A local-first, Mac-native tool for taking experimental
 data to trustworthy statistics and publication-quality figures — without writing code.
 
-See [`docs/`](./docs/README.md) for the research and product planning, including the
+New here? Start with the [user guide](./docs/guide/getting-started.md). See
+[`docs/`](./docs/README.md) for the research and product planning, including the
 [MVP and roadmap](./docs/product/mvp-roadmap.md).
 
 ## What's in this first MVP
@@ -39,15 +40,19 @@ end-to-end: **import data → run an analysis → export a figure**.
     **multi-panel figure with A/B/C labels**; and `ExportManifest` records the
     data source, options, and app version alongside an export.
   - **Project files**: a versioned, human-readable JSON `ProjectDocument`
-    (`.benchgraph`, schema v2) that round-trips the data, analysis spec, and
-    presentation options so a project reopens exactly.
+    (`.benchgraph`, schema v3) that round-trips the data, analysis spec,
+    presentation options, and **staged multi-panel figures** so a project reopens
+    exactly. Panels are stored as the figure that was drawn, not a recipe to
+    re-run, so reopening never silently redraws published work.
 - **`benchgraph`** — a CLI front end demonstrating the workflow.
 - **`BenchGraphApp`** — a SwiftUI macOS app built on the same engine: type into
   an **editable data grid** (or paste/import CSV/TSV/XLSX), pick an analysis, and
   get a live provenance-rich result plus a native chart, with **undo/redo** across
   edits. Export figures to SVG/PDF/PNG/TIFF, **copy them as vector** (PDF+SVG) to
-  the clipboard, stage **multi-panel layouts**, and save/open `.benchgraph`
-  project files (which the app registers so they open on double-click).
+  the clipboard, build **multi-panel figures** with **drag-to-reorder** panels,
+  and save/open `.benchgraph` project files (which the app registers so they open
+  on double-click). A **Help menu** carries quick-start cards backed by the
+  published guide.
 
 The signing/notarization/DMG pipeline is scripted in `scripts/build-app.sh`;
 producing a distributable signed DMG needs an Apple Developer ID credential.
@@ -61,7 +66,7 @@ producing a distributable signed DMG needs an Apple Developer ID credential.
 
 ```bash
 swift build                 # build the library + CLI
-./scripts/test.sh           # run the test suite (86 tests)
+./scripts/test.sh           # run the test suite (120 tests)
 ```
 
 `scripts/test.sh` wraps `swift test` with the framework paths needed when only the
@@ -79,11 +84,19 @@ The app opens with a sample dose-response dataset loaded. Type directly into the
 data grid, or paste/**Import…** CSV/TSV/XLSX, then choose an analysis from the
 picker and the results panel and chart update live; ⌘Z / ⇧⌘Z undo and redo any
 edit. Switch column charts between bars/box/violin, toggle residuals for fits,
-pick a journal theme, and use **Export figure…** (SVG/PDF/PNG/TIFF, with a
-`.manifest.json` written alongside) or **Copy (vector)**. In the
-**Multi-panel figure** tray, **Add current chart** captures the chart as a
-thumbnail panel (A, B, C…) that you can reorder or remove, then **Export
-figure…** combines them into one labeled multi-panel figure.
+pick a journal theme, and use **Export chart…** (SVG/PDF/PNG/TIFF, with a
+`.manifest.json` written alongside) or **Copy (vector)**. For 4PL fits, an
+**Interpolate x at y** field reads concentrations back off the standard curve.
+
+In the **Multi-panel figure** section, **Add current chart** captures the chart
+as a thumbnail panel (A, B, C…). **Drag the cards** to reorder them — the letters
+follow position — or right-click for Move left / Move right. **Export panels…**
+combines them into one labeled figure; the toolbar's **Export chart…** exports
+only the chart on screen. Staged panels are saved with the project and covered by
+undo.
+
+The **Help** menu has quick-start cards for these workflows and links to the
+[full guide](./docs/guide/getting-started.md).
 
 ### CLI examples
 
@@ -95,14 +108,14 @@ figure…** combines them into one labeled multi-panel figure.
 .build/debug/benchgraph ttest examples/groups.csv
 
 # ANOVA post-hoc pairwise comparisons (Bonferroni & Holm)
-.build/debug/benchgraph posthoc groups.csv
+.build/debug/benchgraph posthoc examples/groups.csv
 
 # 4PL dose-response: fit, interpolate x at response 50, export a PDF figure
 .build/debug/benchgraph doseresponse examples/dose-response.csv \
     --interpolate 50 --out examples/dose-response.pdf   # or .svg/.png/.tiff
 
 # Read an .xlsx workbook directly, and export a residual plot
-.build/debug/benchgraph ttest results.xlsx
+.build/debug/benchgraph anova examples/multipanel/B-treatment-groups.xlsx
 .build/debug/benchgraph regress examples/dose-response.csv \
     --residuals --out residuals.svg
 

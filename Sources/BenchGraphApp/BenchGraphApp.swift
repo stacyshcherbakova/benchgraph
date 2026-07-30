@@ -1,10 +1,16 @@
 import SwiftUI
 import AppKit
+import BenchGraphKit
 
 extension Notification.Name {
     /// Posted with a `.benchgraph` file URL when the OS asks the app to open a
     /// project (double-click in Finder, `open` command, drag onto the Dock).
     static let openBenchGraphProject = Notification.Name("openBenchGraphProject")
+
+    /// Posted with a `HelpTopic` slug when a Help menu item is chosen. The open
+    /// window observes it and presents the matching card — the same
+    /// menu-to-window bridge the project-open path uses.
+    static let showBenchGraphHelp = Notification.Name("showBenchGraphHelp")
 }
 
 /// App entry point. The `NSApplicationDelegateAdaptor` makes the executable
@@ -21,6 +27,34 @@ struct BenchGraphApp: App {
         }
         .windowStyle(.titleBar)
         .defaultSize(width: 1360, height: 760)
+        .commands {
+            // Replace the stock Help menu: there is no Help Book to search, so
+            // its search field would find nothing. These items open the in-app
+            // cards and the published guide instead.
+            CommandGroup(replacing: .help) {
+                Button("BenchGraph Quick Start") {
+                    NotificationCenter.default.post(name: .showBenchGraphHelp,
+                                                    object: "getting-started")
+                }
+                .keyboardShortcut("?", modifiers: .command)
+                Button("Choosing An Analysis") {
+                    NotificationCenter.default.post(name: .showBenchGraphHelp,
+                                                    object: "choosing-an-analysis")
+                }
+                Button("Multi-Panel Figures") {
+                    NotificationCenter.default.post(name: .showBenchGraphHelp,
+                                                    object: "multi-panel-figures")
+                }
+                Button("Exporting And Provenance") {
+                    NotificationCenter.default.post(name: .showBenchGraphHelp,
+                                                    object: "exporting-and-provenance")
+                }
+                Divider()
+                Button("Full Documentation Online") {
+                    NSWorkspace.shared.open(BenchGraphDocs.siteURL)
+                }
+            }
+        }
     }
 }
 

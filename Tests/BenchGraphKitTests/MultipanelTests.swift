@@ -13,7 +13,7 @@ import Foundation
                 label: "A"),
             FigureLayout.Panel(
                 request: .scatter(title: "Two", xLabel: "x", yLabel: "y",
-                                  series: [.init(name: "d", points: [(1, 2), (3, 4)])],
+                                  series: [.init(name: "d", points: [.init(x: 1, y: 2), .init(x: 3, y: 4)])],
                                   curve: nil, logX: false),
                 label: "B")
         ]

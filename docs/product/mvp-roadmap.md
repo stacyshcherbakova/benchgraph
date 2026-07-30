@@ -1,17 +1,24 @@
 # MVP And Product Roadmap
 
-Source check date: 2026-07-03.
+Source check date: 2026-07-30.
 
 ## Current Status
 
-**Stage: MVP scope code-complete; preparing the first V1 release.** The
-analysis, graphs, export, and provenance core is complete, and the previously
-outstanding MVP items are now built: an editable data table with undo/redo,
-persisted analysis/chart options, multi-panel layout + export manifest, XLSX
-import, copy-as-vector, and residual plots. The `.benchgraph` document type is
-registered and the signing/notarization/DMG pipeline is scripted. The only thing
-between here and a shippable V1 build is running that pipeline with an Apple
-Developer ID credential. See the ticked [MVP Scope](#mvp-scope) and
+**Stage: MVP scope code-complete; V1 roughly a third done.** The analysis,
+graphs, export, and provenance core is complete, and the previously outstanding
+MVP items are now built: an editable data table with undo/redo, persisted
+analysis/chart options, multi-panel layout + export manifest, XLSX import,
+copy-as-vector, and residual plots. Since then the multi-panel workflow has been
+finished off — panels reorder by dragging, are covered by undo, and persist into
+the project file — and the app has gained a Help menu backed by a published
+[user guide](../guide/getting-started.md). The `.benchgraph` document type is
+registered and the signing/notarization/DMG pipeline is scripted.
+
+**Packaging** is the only thing between here and a shippable *build*: running
+that pipeline with an Apple Developer ID credential. **V1 as defined below is a
+larger target** — six of its nine bullets (in-app updates, crash reporting,
+journal-size presets, XLSX export, R/Python export, power calculators) have no
+code yet. See the ticked [MVP Scope](#mvp-scope) and
 [Version Roadmap](#version-roadmap) below.
 
 ## Product Thesis
@@ -24,8 +31,9 @@ Do not clone every GraphPad Prism feature. Build the smallest credible workflow 
 
 As of the current build, a Swift implementation exists: a tested engine
 (`BenchGraphKit`), a `benchgraph` CLI, and a SwiftUI app (`BenchGraph.app`).
-The suite has 86 tests (39 SciPy-validated stats fixtures plus figure-rendering,
-multi-panel, manifest, XLSX-import, editable-grid, and project-file tests).
+The suite has 120 tests: SciPy-validated stats fixtures plus figure-rendering,
+multi-panel, manifest, XLSX-import, editable-grid, project-file,
+figure-serialisation, panel-order, interpolation, and help-catalog tests.
 
 | MVP area | Status |
 | --- | --- |
@@ -48,11 +56,15 @@ multi-panel, manifest, XLSX-import, editable-grid, and project-file tests).
 | Export: SVG, PDF, PNG, TIFF | Done |
 | Copy figure as vector (PDF + SVG to clipboard) | Done |
 | Multi-panel layout with A/B/C labels | Done |
+| Drag to reorder staged panels | Done |
+| Undo/redo across panel staging | Done |
 | Export manifest (data source, options, app version) | Done |
 | Project file (`.benchgraph`, versioned JSON, save/open) | Done |
-| Persist analysis + chart options in project file | Done (schema v2) |
+| Persist analysis + chart options in project file | Done (schema v3) |
+| Persist staged panels + layout in project file | Done (schema v3) |
 | `.benchgraph` document type registered (double-click to open) | Done |
 | Live provenance (assumptions, warnings, excluded, formula) | Done |
+| In-app Help menu + published user guide | Done |
 | Signed + notarized DMG | Pipeline scripted; needs Apple Developer ID to run |
 
 ## MVP
@@ -82,7 +94,7 @@ A signed, notarized macOS DMG that lets a user create a local project, enter/imp
   - [x] Mann-Whitney and Wilcoxon.
   - [x] Pearson/Spearman correlation.
   - [x] Linear regression.
-  - [x] Nonlinear regression for standard curve and 4-parameter logistic dose-response.
+  - [x] Nonlinear regression for standard curve and 4-parameter logistic dose-response. *(interpolation of unknowns exposed in the app as well as the CLI)*
   - [x] Normality checks and residual plots where relevant.
 - Graphs:
   - [x] Scatter, column/bar, box, violin, line/XY, dose-response curve.
@@ -92,13 +104,16 @@ A signed, notarized macOS DMG that lets a user create a local project, enter/imp
 - Layout and export:
   - [x] Single graph export: PDF, SVG, PNG, TIFF.
   - [x] Copy as vector where possible. *(PDF + SVG to the clipboard)*
-  - [x] Simple multi-panel layout with labels A/B/C.
+  - [x] Simple multi-panel layout with labels A/B/C. *(drag to reorder; saved in the project file)*
   - [x] Export manifest that records data source, analysis options, and app version.
 - Provenance:
   - [x] Recompute analyses when source data or options change.
   - [x] Show assumptions, excluded values, model formula, P value adjustment, CI level, and warnings.
   - [x] Keep analysis outputs linked to exact table and graph.
-  - [x] Undo/redo across table and option edits.
+  - [x] Undo/redo across table and option edits. *(including panel staging and reordering)*
+- Help:
+  - [x] In-app Help menu with task-shaped cards for the core workflows.
+  - [x] Published user guide, linked from the app. *(one catalog drives both; a test binds each card to its page)*
 
 ### Out Of Scope For MVP
 
@@ -120,7 +135,7 @@ The product is credible only if it has:
 - [x] Dose-response and standard-curve workflows.
 - [x] Robust import/paste from spreadsheet data. *(CSV/TSV/paste and XLSX)*
 - [x] High-quality vector export.
-- [x] Persistent project files that reopen exactly. *(schema v2 also persists analysis + chart options)*
+- [x] Persistent project files that reopen exactly. *(schema v3 also persists analysis + chart options and the staged panels)*
 - [x] Linked data -> analysis -> graph updates.
 - [x] Clear warnings for invalid assumptions, missing data, unequal group sizes, and ambiguous repeated-measures structure.
 - [x] Undo/redo across table, analysis, and graph edits.
@@ -157,31 +172,29 @@ The product is credible only if it has:
 
 ### 4. Multi-Panel Publication Figure
 
-1. Create or import several graphs.
-2. Add them to layout.
-3. Align panels and add labels.
-4. Export PDF/SVG/TIFF at journal-ready size.
-5. Save project with export manifest.
+1. Build a graph, then capture it as a panel; repeat for each dataset.
+2. Drag the panel cards to set the A/B/C order, and choose the grid width.
+3. Export PDF/SVG/TIFF at journal-ready size, with an export manifest.
+4. Save the project — the staged panels are stored with it.
 
 ## Version Roadmap
 
 ### V1: Local Scientific Figure Workbench
 
-**Status: In progress (active target) — MVP scope code-complete; remaining work
-is the signed/notarized release (needs an Apple Developer ID) and release
-polish.**
+**Status: In progress (active target) — MVP scope code-complete, but six of the
+nine bullets below have no code yet. Packaging alone does not get us to V1.**
 
 Target: solo researchers and small labs.
 
-- Complete MVP scope.
-- Strong project file format.
-- Installer DMG, signed/notarized release pipeline.
-- In-app update mechanism.
-- Crash reporting with explicit opt-in.
-- Expanded graph templates and journal-size presets.
-- More robust XLSX import/export.
-- R/Python script export for supported analyses.
-- Basic sample-size/power calculators.
+- Complete MVP scope. *(done)*
+- Strong project file format. *(done — schema v3)*
+- Installer DMG, signed/notarized release pipeline. *(scripted; needs an Apple Developer ID to run)*
+- In-app update mechanism. *(not started)*
+- Crash reporting with explicit opt-in. *(not started)*
+- Expanded graph templates and journal-size presets. *(journal themes shipped; size presets not started — `FigureLayout.Spec` has the geometry but nothing exposes it)*
+- More robust XLSX import/export. *(import shipped, single-sheet; there is no XLSX writer at all)*
+- R/Python script export for supported analyses. *(not started)*
+- Basic sample-size/power calculators. *(not started)*
 
 ### V2: Advanced Analysis And Team Workflows
 
@@ -222,7 +235,7 @@ The MVP architecture is now built; see the
 
 - App: Swift + SwiftUI, with a UI-agnostic engine (`BenchGraphKit`) shared by the app and CLI; AppKit used where needed for document windows, menu commands, and export.
 - Rendering: a custom vector-first renderer — a deterministic, text-based SVG renderer plus a Core Graphics renderer for PDF/PNG/TIFF — rather than relying on Swift Charts for export control.
-- Data model: a single versioned JSON project document (schema v2) holding the raw data, the analysis specification, and the presentation options (error-bar type, plot style, theme, significance/residual toggles), so a project reopens exactly. Full multi-panel layout specs are not yet persisted.
+- Data model: a single versioned JSON project document (schema v3) holding the raw data, the analysis specification, the presentation options (error-bar type, plot style, theme, significance/residual toggles), and the staged multi-panel figure, so a project reopens exactly. Panels are stored as the rendered figure rather than a recipe to re-run — see the spec's D5.
 - File format: a plain, human-readable, key-sorted JSON `.benchgraph` file — explicit, inspectable, and diffable, with no opaque blobs. The `.benchgraph` document type is registered with macOS (exported UTI + `CFBundleDocumentTypes`), so projects open on double-click. (The earlier SQLite / package-directory option was considered but not adopted.)
 - Stats engine: a small validated native Swift core with **zero external dependencies** (self-contained distributions) and independent SciPy reference fixtures. Re-evaluate an embedded R or Rust/C++ numerical core before V2.
 

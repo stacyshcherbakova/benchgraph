@@ -32,15 +32,18 @@ exercise the XLSX importer.
 1. Import a file (**Import…**), pick the matching analysis, choose the chart
    style, then **Add current chart** in the *Multi-panel figure* section at the
    bottom of the left pane.
-2. Repeat for each file. Panels are labelled A, B, C… in staging order; reorder
-   by right-clicking a panel card and choosing **Move left** / **Move right**.
-   With two or more panels a **Columns** stepper appears to set the grid width.
-3. Export with the **Export figure…** button *inside the Multi-panel section*
-   (grid icon) — not the one in the toolbar, which exports only the single
-   chart currently on screen. It writes one combined SVG / PDF / PNG / TIFF
-   plus an export manifest.
+2. Repeat for each file. Panels are labelled A, B, C… by position, so **drag a
+   card** to reorder and the letters follow; right-click gives **Move left** /
+   **Move right** instead. With two or more panels a **Columns** stepper appears
+   to set the grid width.
+3. Export with **Export panels…** *inside the Multi-panel section* (grid icon) —
+   not **Export chart…** in the toolbar, which exports only the single chart
+   currently on screen. It writes one combined SVG / PDF / PNG / TIFF plus an
+   export manifest.
 
-Note: staged panels are not saved into a `.benchgraph` project and are not
-covered by undo, so build and export a multi-panel figure in one sitting.
+Staged panels are saved into the `.benchgraph` project and covered by ⌘Z, so a
+part-built figure survives quitting the app and a mistaken **Clear** can be
+undone.
 
-`preview.png` is what all four panels look like composed in a 2×2 grid.
+`preview.png` is what all four panels look like composed in a 2×2 grid. The full
+walkthrough is in the [user guide](../../docs/guide/multi-panel-figures.md).

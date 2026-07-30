@@ -1,6 +1,6 @@
 # Project And Architecture Spec
 
-Last updated: 2026-07-03. Engine version: `0.1.0-mvp`.
+Last updated: 2026-07-30. Engine version: `0.1.0-mvp`.
 
 This document describes how BenchGraph is built and why — the system
 architecture and the design decisions behind it. It deliberately does not
@@ -38,15 +38,19 @@ Sources/
     Stats/         analyses + self-contained Distributions
     Provenance/    AnalysisResult (the result envelope)
     Export/        SVGRenderer, CGChartRenderer, FigureExport, FigureLayout,
-                   ExportManifest, Significance, Theme
-    Document/      ProjectDocument (.benchgraph file, schema v2)
+                   ExportManifest, PanelOrder, Significance, Theme
+    Docs/          HelpTopic (in-app help catalog + published-guide URLs)
+    Document/      ProjectDocument (.benchgraph file, schema v3), PanelRecord
   benchgraph/      CLI (main.swift)
   BenchGraphApp/   SwiftUI app (AppModel, ContentView, ChartView, BenchGraphApp)
 Tests/             SciPy-validated golden-value + rendering + multi-panel +
-                   manifest + XLSX + editable-grid + project-file tests
-scripts/           build-app.sh (bundle + signing/notarization/DMG), test.sh
-examples/          sample CSV + exported figures
-docs/              this documentation
+                   manifest + XLSX + editable-grid + project-file +
+                   figure-Codable + panel-order + interpolation + help tests
+scripts/           build-app.sh (bundle + signing/notarization/DMG), test.sh,
+                   make-icon.swift
+assets/            generated AppIcon.icns
+examples/          sample CSVs, plus a four-file multi-panel demo study
+docs/              this documentation, including the user guide under guide/
 ```
 
 ## Key Design Decisions
@@ -75,14 +79,15 @@ alongside the value.
 ### D3 — An open, versioned project file (`.benchgraph`)
 
 A project saves as a custom extension wrapping **plain, pretty-printed,
-key-sorted JSON** (`ProjectDocument`, schema `version` 2). It stores the raw
+key-sorted JSON** (`ProjectDocument`, schema `version` 3). It stores the raw
 data verbatim, the table kind, header flag, the selected analysis (by a
 **stable key, decoupled from its UI label**), the presentation options
-(error-bar type, plot style, theme, significance/residual toggles), and the
-engine version that wrote it. Loads reject any file whose `version` is newer
-than the running build understands, tolerate the legacy label-based identifier
-written by earlier builds, and read v1 files (whose option fields are absent)
-by falling back to defaults — the option fields are optional and decode to nil.
+(error-bar type, plot style, theme, significance/residual toggles), the staged
+multi-panel figure (see D5), and the engine version that wrote it. Loads reject
+any file whose `version` is newer than the running build understands, tolerate
+the legacy label-based identifier written by earlier builds, and read v1 and v2
+files by falling back to defaults — every field added after v1 is optional and
+decodes to nil.
 
 *Why a custom extension rather than just `.json`?* The extension and the
 byte-format are independent concerns: JSON is *what the bytes are*; the
@@ -110,7 +115,10 @@ trustworthy tool and the deliberate opposite of a closed proprietary format.
   style, theme, significance/residual toggles) alongside the data and analysis,
   so "reopens exactly as saved" holds for the app's configurable options. The
   paired/unpaired and Student/Welch choices are encoded in the analysis key
-  itself. Full multi-panel *layout* specs are not yet persisted.
+  itself.
+- Schema v3 **persists the staged multi-panel figure** — the panels in A/B/C
+  order, the grid width, and any dose-response interpolation targets — so a
+  part-built figure survives a save. How panels are stored is D5.
 - The app **registers the `.benchgraph` document type** with macOS via
   `build-app.sh` (an exported UTI conforming to `public.json` plus
   `CFBundleDocumentTypes` in the Info.plist), and the app delegate routes
@@ -132,6 +140,48 @@ source, analysis options, and app version alongside an export.
 output, and CoreGraphics covers the publication raster/vector formats without an
 external graphics dependency.
 
+(One caveat on determinism: only SVG is byte-stable. CoreGraphics stamps a
+per-render `/ID` into every PDF, so two exports of the same figure never match
+byte-for-byte. Snapshot tests therefore assert on SVG and check PDF only for
+validity.)
+
+### D5 — Panels persist as the rendered figure, not a re-run recipe
+
+A staged multi-panel figure is stored in the project file as the exact
+`FigureExport.Request` that was drawn (`PanelRecord`), not as inputs to
+re-analyse on load. The whole render tree — the request, its renderer groups,
+significance brackets, and a nominal `PlotPoint` replacing what were tuples — is
+`Codable` for this purpose. The panel's `ExportManifest` and its source CSV ride
+along as provenance, and thumbnails are re-rendered on load rather than stored.
+
+*Why:* a staged panel is a snapshot of a past chart, and a figure may already be
+in a submitted manuscript. Re-deriving it on load would mean that a later change
+to a fit tolerance, a kernel bandwidth, or a significance threshold silently
+redraws published work — the graphical form of exactly the version drift D1
+exists to prevent. Storing the drawn figure also keeps the semantics the app
+already has: panels in one figure commonly come from different datasets, so
+there is no single "current data" to re-derive them from. The recipe is retained
+so a panel can still be traced, and re-derived deliberately, rather than behind
+the user's back.
+
+### D6 — One user guide, two lengths
+
+The published site carries the long-form guide (`docs/guide/`). The app carries
+a short, task-shaped card per topic, shown from the Help menu, ending in a link
+to the full page. Both come from one catalog, `HelpTopic` in the engine, whose
+topic `id` is also the slug of its page — and a test asserts every slug has a
+page whose title matches, and that no page is unreachable from the app.
+
+*Why:* documentation duplicated by hand drifts, and the app is the wrong place
+for reference-length prose. Making the app answer the immediate question and
+link out for the rest keeps one authority. Putting the catalog in the engine
+rather than the UI is what makes the slug-to-page binding testable — the same
+reason `EditGrid` lives there. The guide is deliberately *not* bundled as an app
+resource: SwiftPM would require the files to live inside the app target, and
+`build-app.sh` copies only the executable into the bundle, so a resource-based
+help system would work under `swift run` and silently show nothing in the
+shipped `.app`.
+
 ## Validation Methodology
 
 Every analysis is covered by golden-value tests whose reference numbers were
@@ -147,20 +197,30 @@ table.
 - **Not a full Prism clone.** Build the smallest credible workflow that makes a
   Mac-heavy lab switch for routine analyses, not every feature.
 - **Local-first, no cloud/sync** in the MVP.
-- **Direct DMG distribution, not the Mac App Store** (signing/notarization is the
-  remaining V1 packaging step).
+- **Direct DMG distribution, not the Mac App Store** (signing/notarization is
+  the remaining *packaging* step; see the roadmap for the rest of V1).
 - **Large-data performance is not a target.** Data is embedded as text in the
   project file on the assumption that bench-science datasets are small.
 
 ## Open Questions And Follow-Ups
 
 - Define a **schema migration path** for when `ProjectDocument.version` bumps
-  again — today loads reject newer versions and read older ones by treating new
+  past 3 — today loads reject newer versions and read older ones by treating new
   fields as optional, but there is no explicit upgrade step for structural
-  changes.
-- **Persist multi-panel layout specs** in the project file (today the staged
-  panels live only in the running session; the composed figure and its manifest
-  are exported, but the layout itself is not saved).
+  changes. Note that `FigureExport.Request`'s synthesized coding keys are now
+  part of the file format: renaming a case or an associated-value label is a
+  breaking change, pinned by a test rather than by a hand-written encoder.
+- **Per-panel themes.** The theme is global, so restyling after staging leaves
+  earlier panels' thumbnails drawn in the old theme until the project is
+  reopened. Either re-render thumbnails on a theme change or let each panel
+  carry its own theme.
+- **Show interpolated points on the dose-response chart.** The values appear in
+  the result pane; drawing a marker and dropline would need a new `ChartSpec`
+  case supported by all three renderers.
+- **Split `BenchGraphAppCore` out of the app target** so `AppModel` can be
+  tested. Today `BenchGraphApp` is an `.executableTarget` with `@main`, which
+  cannot be linked into a test bundle, so the undo tracks and document restore
+  are verified by hand.
 - Make **grouped tables first-class** (currently parsed but not a first-class
   table kind).
 - **XLSX import scope**: the reader handles a single sheet, shared/inline

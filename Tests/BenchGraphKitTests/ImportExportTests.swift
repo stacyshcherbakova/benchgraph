@@ -48,7 +48,7 @@ import Testing
         let svg = SVGRenderer().scatter(
             title: "Test",
             xLabel: "X", yLabel: "Y",
-            series: [.init(name: "d", points: [(1, 2), (2, 4), (3, 6)])]
+            series: [.init(name: "d", points: [.init(x: 1, y: 2), .init(x: 2, y: 4), .init(x: 3, y: 6)])]
         )
         #expect(svg.hasPrefix("<?xml"))
         #expect(svg.contains("<svg"))
@@ -73,8 +73,9 @@ import Testing
 
     @Test func deterministicOutput() {
         let r = SVGRenderer()
-        let a = r.scatter(title: "T", xLabel: "X", yLabel: "Y", series: [.init(name: "d", points: [(1, 1), (2, 2)])])
-        let b = r.scatter(title: "T", xLabel: "X", yLabel: "Y", series: [.init(name: "d", points: [(1, 1), (2, 2)])])
+        let pts: [PlotPoint] = [.init(x: 1, y: 1), .init(x: 2, y: 2)]
+        let a = r.scatter(title: "T", xLabel: "X", yLabel: "Y", series: [.init(name: "d", points: pts)])
+        let b = r.scatter(title: "T", xLabel: "X", yLabel: "Y", series: [.init(name: "d", points: pts)])
         #expect(a == b)   // byte-stable for snapshot testing
     }
 }

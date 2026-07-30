@@ -21,7 +21,7 @@ public enum Significance {
 ///
 /// `level` is the vertical stacking row, filled in by ``BracketLayout`` so that
 /// overlapping comparisons don't collide. Renderers consume this directly.
-public struct BarBracket: Sendable, Equatable {
+public struct BarBracket: Sendable, Equatable, Codable {
     public let fromIndex: Int
     public let toIndex: Int
     public let label: String

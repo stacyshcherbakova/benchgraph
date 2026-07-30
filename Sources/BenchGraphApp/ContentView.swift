@@ -8,7 +8,8 @@ private let brandAccent = Color.indigo
 
 struct ContentView: View {
     @StateObject private var model = AppModel()
-    @State private var layoutColumns = 2
+    @State private var confirmingClearPanels = false
+    @State private var helpTopic: HelpTopic?
 
     var body: some View {
         HSplitView {
@@ -49,9 +50,11 @@ struct ContentView: View {
                 Button {
                     exportFigure()
                 } label: {
-                    Label("Export figure…", systemImage: "square.and.arrow.up")
+                    Label("Export chart…", systemImage: "square.and.arrow.up")
                 }
                 .disabled(model.chart == .none)
+                .help("Export the chart currently on screen. To export the staged "
+                      + "panels as one figure, use Export panels… in the Multi-panel section.")
             }
         }
         .tint(brandAccent)
@@ -59,6 +62,14 @@ struct ContentView: View {
             if let url = note.object as? URL, let doc = try? ProjectDocument.load(from: url) {
                 model.apply(doc)
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .showBenchGraphHelp)) { note in
+            if let slug = note.object as? String {
+                helpTopic = BenchGraphDocs.topic(slug)
+            }
+        }
+        .sheet(item: $helpTopic) { topic in
+            HelpSheet(topic: topic)
         }
     }
 
@@ -83,6 +94,20 @@ struct ContentView: View {
 
                 Text(model.analysis.hint)
                     .font(.caption).foregroundColor(.secondary)
+
+                if model.analysis == .fourPL {
+                    HStack(spacing: 6) {
+                        Text("Interpolate x at y")
+                            .font(.caption).foregroundColor(.secondary)
+                        TextField("e.g. 50, 75", text: interpolateBinding,
+                                  onEditingChanged: interpolateEditBracket)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(.caption, design: .monospaced))
+                            .frame(width: 120)
+                            .help("Read the concentration back at these response "
+                                  + "values — the standard-curve workflow")
+                    }
+                }
 
                 if model.isColumnChart {
                     VStack(alignment: .leading, spacing: 6) {
@@ -144,7 +169,7 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Multi-panel figure")
                 .font(.caption).bold().foregroundColor(.secondary)
-            Text("Capture the chart on the right as a panel, build up A, B, C…, then export them as one combined journal-style figure.")
+            Text("Capture the chart on the right as a panel, build up A, B, C…, then export them as one combined journal-style figure. Drag the cards to reorder.")
                 .font(.caption2).foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -158,8 +183,12 @@ struct ContentView: View {
                 .help("Capture the chart shown on the right as the next panel")
                 Spacer()
                 if model.panelCount > 1 {
-                    Stepper("Columns: \(layoutColumns)", value: $layoutColumns, in: 1...4)
+                    Stepper("Columns: \(model.layoutColumns)",
+                            value: Binding(get: { model.layoutColumns },
+                                           set: { model.setLayoutColumns($0) }),
+                            in: 1...4)
                         .fixedSize()
+                        .help("How many panels per row in the composed figure")
                 }
             }
 
@@ -179,12 +208,18 @@ struct ContentView: View {
                             PanelCard(
                                 label: model.panelLabels[i],
                                 title: panel.title,
-                                image: panel.thumbnail,
+                                image: model.thumbnailImage(for: panel.id),
+                                id: panel.id,
                                 canMoveLeft: i > 0,
                                 canMoveRight: i < model.panelCount - 1,
                                 onMoveLeft: { withAnimation { model.movePanel(panel.id, by: -1) } },
                                 onMoveRight: { withAnimation { model.movePanel(panel.id, by: 1) } },
-                                onRemove: { withAnimation { model.removePanel(panel.id) } }
+                                onRemove: { withAnimation { model.removePanel(panel.id) } },
+                                onDropPanel: { draggedID in
+                                    guard draggedID != panel.id else { return false }
+                                    withAnimation { model.movePanel(draggedID, to: i) }
+                                    return true
+                                }
                             )
                         }
                     }
@@ -192,12 +227,23 @@ struct ContentView: View {
                 }
                 HStack(spacing: 8) {
                     Button { exportLayout() } label: {
-                        Label("Export figure…", systemImage: "square.grid.2x2")
+                        Label("Export panels…", systemImage: "square.grid.2x2")
                     }
-                    Button("Clear") { withAnimation { model.clearPanels() } }
+                    .help("Combine the staged panels into one multi-panel figure")
+                    Button("Clear") { confirmingClearPanels = true }
+                        .help("Remove every staged panel")
                     Spacer()
                     Text(layoutSummary)
                         .font(.caption2).foregroundColor(.secondary)
+                }
+                .confirmationDialog("Remove all \(model.panelCount) staged panel\(model.panelCount == 1 ? "" : "s")?",
+                                    isPresented: $confirmingClearPanels, titleVisibility: .visible) {
+                    Button("Clear panels", role: .destructive) {
+                        withAnimation { model.clearPanels() }
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("This can be undone with ⌘Z.")
                 }
             }
         }
@@ -207,8 +253,9 @@ struct ContentView: View {
     /// E.g. "3 panels · 2×2 grid" for the current staging and column count.
     private var layoutSummary: String {
         let n = model.panelCount
-        let rows = Int((Double(n) / Double(layoutColumns)).rounded(.up))
-        return "\(n) panel\(n == 1 ? "" : "s") · \(rows)×\(min(layoutColumns, n)) grid"
+        let cols = min(model.layoutColumns, n)
+        let rows = Int((Double(n) / Double(model.layoutColumns)).rounded(.up))
+        return "\(n) panel\(n == 1 ? "" : "s") · \(rows)×\(cols) grid"
     }
 
     // MARK: - Right: results + chart
@@ -272,6 +319,15 @@ struct ContentView: View {
     }
     private var themeBinding: Binding<String> {
         Binding(get: { model.theme.name }, set: { if let t = Theme.named($0) { model.setTheme(t) } })
+    }
+    private var interpolateBinding: Binding<String> {
+        Binding(get: { model.interpolateText }, set: { model.setInterpolateText($0) })
+    }
+
+    /// Collapse a typing session in the interpolation field into one undo step,
+    /// the same way grid cells do.
+    private func interpolateEditBracket(_ began: Bool) {
+        if began { model.beginInteractiveEdit() } else { model.commitInteractiveEdit() }
     }
 
     // MARK: - Actions
@@ -359,7 +415,7 @@ struct ContentView: View {
         panel.message = "Exports the staged panels as one multi-panel figure, with a .manifest.json alongside."
         if panel.runModal() == .OK, let url = panel.url {
             let ext = url.pathExtension.isEmpty ? "pdf" : url.pathExtension
-            if let data = model.layoutData(pathExtension: ext, columns: layoutColumns) {
+            if let data = model.layoutData(pathExtension: ext, columns: model.layoutColumns) {
                 try? data.write(to: url)
                 writeManifest(model.layoutManifest(), besideFigure: url)
             }
@@ -385,20 +441,103 @@ private extension ContentView {
     }
 }
 
+// MARK: - Help
+
+/// One help card: the short, task-shaped form of a published guide page, with a
+/// link out to the long form. Content comes from `BenchGraphDocs.topics` so the
+/// app and the site cannot drift apart silently (spec D6).
+private struct HelpSheet: View {
+    let topic: HelpTopic
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(topic.title)
+                    .font(.title2.bold())
+                Text(topic.summary)
+                    .font(.callout)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(20)
+
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(Array(topic.steps.enumerated()), id: \.offset) { i, step in
+                        HStack(alignment: .firstTextBaseline, spacing: 10) {
+                            Text("\(i + 1)")
+                                .font(.caption.bold().monospacedDigit())
+                                .foregroundStyle(.white)
+                                .frame(width: 18, height: 18)
+                                .background(Circle().fill(brandAccent))
+                            Text(step)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+                .padding(20)
+            }
+
+            Divider()
+
+            HStack {
+                Button("Read the full guide online") {
+                    NSWorkspace.shared.open(BenchGraphDocs.url(forGuide: topic.id))
+                }
+                .buttonStyle(.link)
+                Spacer()
+                Button("Done") { dismiss() }
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding(16)
+        }
+        .frame(width: 480, height: 460)
+    }
+}
+
+// MARK: - Panel drag payload
+
+extension UTType {
+    /// Private drag type for reordering staged panels. Declaring our own type
+    /// (rather than dragging plain text) means a card only accepts another card
+    /// — text dragged in from another app is not a valid drop.
+    static let benchGraphPanel = UTType(exportedAs: "com.benchgraph.panel")
+}
+
+/// The identity of a panel being dragged within the tray.
+private struct PanelDragItem: Codable, Transferable {
+    let id: UUID
+
+    static var transferRepresentation: some TransferRepresentation {
+        CodableRepresentation(contentType: .benchGraphPanel)
+    }
+}
+
 // MARK: - Staged panel card
 
 /// A staged panel in the multi-panel tray: a thumbnail of the captured chart,
-/// its A/B/C badge, the title, and remove/reorder controls (× button; right-click
-/// for move left/right).
+/// its A/B/C badge, the title, and remove/reorder controls.
+///
+/// Reordering has two paths that share one model call: dragging a card onto
+/// another, and the right-click Move left / Move right menu. The menu is kept
+/// because drag-and-drop is not keyboard-accessible.
 private struct PanelCard: View {
     let label: String
     let title: String
     let image: NSImage?
+    let id: UUID
     let canMoveLeft: Bool
     let canMoveRight: Bool
     let onMoveLeft: () -> Void
     let onMoveRight: () -> Void
     let onRemove: () -> Void
+    /// Handle another card being dropped here. Returns whether it was accepted.
+    let onDropPanel: (UUID) -> Bool
+
+    @State private var isTargeted = false
 
     var body: some View {
         VStack(spacing: 3) {
@@ -428,11 +567,29 @@ private struct PanelCard: View {
                 .foregroundColor(.secondary)
                 .frame(width: 108)
         }
+        .overlay(alignment: .leading) {
+            // Insertion indicator. Drawn as an overlay on fixed-size geometry so
+            // nothing reflows while a drag is in flight.
+            if isTargeted {
+                Capsule()
+                    .fill(brandAccent)
+                    .frame(width: 3)
+                    .padding(.vertical, 2)
+                    .offset(x: -5)
+            }
+        }
         .contextMenu {
             Button("Move left", action: onMoveLeft).disabled(!canMoveLeft)
             Button("Move right", action: onMoveRight).disabled(!canMoveRight)
             Divider()
             Button("Remove", role: .destructive, action: onRemove)
+        }
+        .draggable(PanelDragItem(id: id))
+        .dropDestination(for: PanelDragItem.self) { items, _ in
+            guard let dragged = items.first else { return false }
+            return onDropPanel(dragged.id)
+        } isTargeted: { targeted in
+            isTargeted = targeted
         }
     }
 

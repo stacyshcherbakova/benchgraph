@@ -98,6 +98,13 @@ enum ChartSpec: Equatable {
 /// A full snapshot of the editable session, used for undo/redo. Everything the
 /// user can change — the data grid and every presentation option — is captured
 /// here so one undo step restores the exact prior state.
+/// The undoable state of the multi-panel tray. Kept separate from `EditState`
+/// so a grid keystroke never copies the staged thumbnails.
+struct PanelState: Equatable, Sendable {
+    var panels: [AppModel.StagedPanel]
+    var layoutColumns: Int
+}
+
 struct EditState: Equatable, Sendable {
     var grid: EditGrid
     var hasHeader: Bool
@@ -107,6 +114,9 @@ struct EditState: Equatable, Sendable {
     var showSignificance: Bool
     var showResiduals: Bool
     var themeName: String
+    /// Raw text of the 4PL interpolation field, kept as typed so undo restores
+    /// exactly what the user had (including a trailing comma mid-edit).
+    var interpolateText: String
 }
 
 /// Drives the whole window: an editable data grid + chosen analysis → live
@@ -128,6 +138,9 @@ final class AppModel: ObservableObject {
     @Published var showResiduals: Bool = false
     /// Journal theme used for the live chart and figure export.
     @Published var theme: Theme = .default
+    /// For 4PL: response values to read x back at, as typed (e.g. "50, 75").
+    /// Empty means no interpolation.
+    @Published var interpolateText: String = ""
 
     @Published private(set) var table: DataTable?
     @Published private(set) var result: AnalysisResult?
@@ -136,16 +149,46 @@ final class AppModel: ObservableObject {
 
     /// One chart staged for the multi-panel figure, with a rendered thumbnail
     /// so the tray shows exactly what was captured.
-    struct StagedPanel: Identifiable {
+    ///
+    /// The thumbnail is held as PNG `Data` rather than an `NSImage` so the whole
+    /// value is `Sendable`, `Equatable`, and `Codable`: undo snapshots capture an
+    /// array of these, and they are persisted into the project file. Views get a
+    /// decoded `NSImage` via `thumbnailImage(for:)`, which caches.
+    struct StagedPanel: Identifiable, Equatable, Sendable {
         let id: UUID
         let request: FigureExport.Request
         let title: String
-        let thumbnail: NSImage?
+        let thumbnailPNG: Data?
+        /// The panel's source data at staging time, kept as provenance so the
+        /// panel can be traced back to the rows that produced it.
+        let sourceData: String?
     }
 
     /// Figures staged for a multi-panel publication layout (A, B, C …).
     @Published private(set) var stagedPanels: [StagedPanel] = []
     var panelCount: Int { stagedPanels.count }
+
+    /// Grid width of the composed multi-panel figure. Lives on the model (not as
+    /// view state) so it is undoable and saved with the project.
+    @Published private(set) var layoutColumns = 2
+
+    /// Decoded thumbnails, keyed by panel id, so SwiftUI does not re-decode a PNG
+    /// on every body evaluation. Pruned to the live panel set after each change.
+    private var thumbnailCache: [UUID: NSImage] = [:]
+
+    /// The tray image for a staged panel, decoding and caching on first use.
+    func thumbnailImage(for id: UUID) -> NSImage? {
+        if let cached = thumbnailCache[id] { return cached }
+        guard let png = stagedPanels.first(where: { $0.id == id })?.thumbnailPNG,
+              let image = NSImage(data: png) else { return nil }
+        thumbnailCache[id] = image
+        return image
+    }
+
+    private func pruneThumbnailCache() {
+        let live = Set(stagedPanels.map(\.id))
+        thumbnailCache = thumbnailCache.filter { live.contains($0.key) }
+    }
 
     /// One undo manager for the whole session. Cmd-Z/Cmd-Shift-Z and the toolbar
     /// buttons drive it; each edit registers a full-state restore.
@@ -271,6 +314,15 @@ final class AppModel: ObservableObject {
     func setShowResiduals(_ value: Bool) { guard value != showResiduals else { return }; edit { showResiduals = value } }
     func setTheme(_ value: Theme) { guard value != theme else { return }; edit { theme = value } }
 
+    /// Live edit of the 4PL interpolation field. Recomputes per keystroke like a
+    /// grid cell; undo granularity is the whole typing session, bracketed by
+    /// `beginInteractiveEdit`/`commitInteractiveEdit`.
+    func setInterpolateText(_ value: String) {
+        guard value != interpolateText else { return }
+        interpolateText = value
+        recompute()
+    }
+
     /// Whether the current analysis has a fit whose residuals can be plotted.
     var supportsResiduals: Bool { analysis == .linear || analysis == .fourPL }
 
@@ -292,7 +344,8 @@ final class AppModel: ObservableObject {
     private func snapshot() -> EditState {
         EditState(grid: grid, hasHeader: hasHeader, analysis: analysis, errorBar: errorBar,
                   columnPlot: columnPlot, showSignificance: showSignificance,
-                  showResiduals: showResiduals, themeName: theme.name)
+                  showResiduals: showResiduals, themeName: theme.name,
+                  interpolateText: interpolateText)
     }
 
     private func apply(state: EditState) {
@@ -303,6 +356,7 @@ final class AppModel: ObservableObject {
         columnPlot = state.columnPlot
         showSignificance = state.showSignificance
         showResiduals = state.showResiduals
+        interpolateText = state.interpolateText
         theme = Theme.named(state.themeName) ?? .default
         recompute()
     }
@@ -313,6 +367,43 @@ final class AppModel: ObservableObject {
                 let current = model.snapshot()
                 model.apply(state: previous)
                 model.registerUndo(current)
+            }
+        }
+    }
+
+    // MARK: - Undo / redo (multi-panel staging)
+
+    /// Panel staging is a *second* undo track registered on the same
+    /// `undoManager`, so Cmd-Z walks one chronological stack that interleaves
+    /// grid edits and panel edits correctly.
+    ///
+    /// It is deliberately not folded into `EditState`: `edit` snapshots on every
+    /// discrete change and `beginInteractiveEdit` on every typing session, so
+    /// including the panels would copy every staged thumbnail on each keystroke
+    /// session in the grid.
+    private func editPanels(_ mutate: () -> Void) {
+        let previous = panelSnapshot()
+        mutate()
+        pruneThumbnailCache()
+        registerPanelUndo(previous)
+    }
+
+    private func panelSnapshot() -> PanelState {
+        PanelState(panels: stagedPanels, layoutColumns: layoutColumns)
+    }
+
+    private func applyPanels(_ state: PanelState) {
+        stagedPanels = state.panels
+        layoutColumns = state.layoutColumns
+        pruneThumbnailCache()
+    }
+
+    private func registerPanelUndo(_ previous: PanelState) {
+        undoManager.registerUndo(withTarget: self) { model in
+            MainActor.assumeIsolated {
+                let current = model.panelSnapshot()
+                model.applyPanels(previous)
+                model.registerPanelUndo(current)
             }
         }
     }
@@ -406,7 +497,8 @@ final class AppModel: ObservableObject {
                 }
             case .fourPL:
                 let (x, y) = try xyPairs(parsed)
-                result = FourPL.analyze(x: x, y: y)
+                result = FourPL.analyze(x: x, y: y,
+                                        interpolateY: FourPL.parseTargets(interpolateText))
                 let fit = FourPL.fit(x: x, y: y)
                 if showResiduals {
                     chart = residualScatter(x: x, y: y, predict: fit.predict, logX: true, xLabel: xName(parsed))
@@ -463,24 +555,56 @@ final class AppModel: ObservableObject {
             plotStyle: columnPlot.rawValue,
             showSignificance: showSignificance,
             themeName: theme.name,
-            showResiduals: showResiduals
+            showResiduals: showResiduals,
+            panels: stagedPanels.map {
+                PanelRecord(request: $0.request, title: $0.title, sourceData: $0.sourceData)
+            },
+            layoutColumns: layoutColumns,
+            interpolateTargets: FourPL.parseTargets(interpolateText)
         )
     }
 
     /// Restore a loaded project: data, analysis, and (when present) the saved
-    /// presentation options. Registered as one undo step.
+    /// presentation options and staged panels. Registered as one undo step on
+    /// each track, so a load can be undone whole.
     func apply(_ doc: ProjectDocument) {
         let previous = snapshot()
+        let previousPanels = panelSnapshot()
+
         if let restored = Analysis.restore(from: doc.analysisName) { analysis = restored }
         hasHeader = doc.hasHeader
         grid = EditGrid.parse(doc.data, kind: analysis.tableKind, hasHeader: doc.hasHeader)
         if let e = doc.errorBar { errorBar = e }
         if let style = doc.plotStyle, let plot = ColumnPlot(rawValue: style) { columnPlot = plot }
         if let sig = doc.showSignificance { showSignificance = sig }
+        // Theme must be restored before the thumbnails below, which re-render
+        // with it — otherwise a project saved under Nature comes back with
+        // default-themed thumbnails.
         if let name = doc.themeName, let t = Theme.named(name) { theme = t }
         if let res = doc.showResiduals { showResiduals = res }
+        if let targets = doc.interpolateTargets, !targets.isEmpty {
+            interpolateText = targets.map { $0 == $0.rounded() ? String(Int($0)) : String($0) }
+                .joined(separator: ", ")
+        } else {
+            interpolateText = ""
+        }
+
+        if let records = doc.panels {
+            // Thumbnails are not persisted — re-render each from its stored
+            // request, the same call that staging makes.
+            stagedPanels = records.map { record in
+                StagedPanel(id: UUID(), request: record.request, title: record.title,
+                            thumbnailPNG: FigureExport.data(record.request,
+                                                            pathExtension: "png", theme: theme),
+                            sourceData: record.sourceData)
+            }
+        }
+        if let cols = doc.layoutColumns { layoutColumns = max(1, min(4, cols)) }
+        pruneThumbnailCache()
+
         recompute()
         registerUndo(previous)
+        registerPanelUndo(previousPanels)
     }
 
     /// Describe the current chart for the shared exporter.
@@ -491,8 +615,8 @@ final class AppModel: ObservableObject {
         case let .scatter(points, curve, logX, xLabel, yLabel):
             return .scatter(
                 title: chartTitle, xLabel: xLabel, yLabel: yLabel,
-                series: [.init(name: "data", points: points.map { (x: $0.x, y: $0.y) })],
-                curve: curve?.map { (x: $0.x, y: $0.y) },
+                series: [.init(name: "data", points: points.map { PlotPoint(x: $0.x, y: $0.y) })],
+                curve: curve?.map { PlotPoint(x: $0.x, y: $0.y) },
                 logX: logX
             )
         case let .bars(groups, yLabel, brackets):
@@ -533,24 +657,47 @@ final class AppModel: ObservableObject {
     /// a thumbnail of exactly what was captured so the tray shows it.
     func addCurrentPanel() {
         guard let req = figureRequest() else { return }
-        let thumbnail = FigureExport.data(req, pathExtension: "png", theme: theme)
-            .flatMap { NSImage(data: $0) }
-        stagedPanels.append(StagedPanel(id: UUID(), request: req, title: req.title, thumbnail: thumbnail))
+        let png = FigureExport.data(req, pathExtension: "png", theme: theme)
+        editPanels {
+            stagedPanels.append(StagedPanel(id: UUID(), request: req, title: req.title,
+                                            thumbnailPNG: png, sourceData: csvText))
+        }
     }
 
     func removePanel(_ id: UUID) {
-        stagedPanels.removeAll { $0.id == id }
+        guard stagedPanels.contains(where: { $0.id == id }) else { return }
+        editPanels { stagedPanels.removeAll { $0.id == id } }
+    }
+
+    /// Move a staged panel to an absolute position in the A/B/C order, as a drag
+    /// does. Remove-then-insert, with the destination corrected for the removal
+    /// when moving rightwards.
+    func movePanel(_ id: UUID, to destination: Int) {
+        guard let from = stagedPanels.firstIndex(where: { $0.id == id }) else { return }
+        let to = PanelOrder.insertionIndex(count: stagedPanels.count, from: from, to: destination)
+        guard to != from else { return }
+        editPanels {
+            let panel = stagedPanels.remove(at: from)
+            stagedPanels.insert(panel, at: to)
+        }
     }
 
     /// Move a staged panel one place left (-1) or right (+1) in the A/B/C order.
     func movePanel(_ id: UUID, by offset: Int) {
         guard let i = stagedPanels.firstIndex(where: { $0.id == id }) else { return }
-        let j = i + offset
-        guard stagedPanels.indices.contains(j) else { return }
-        stagedPanels.swapAt(i, j)
+        movePanel(id, to: i + offset)
     }
 
-    func clearPanels() { stagedPanels.removeAll() }
+    func clearPanels() {
+        guard !stagedPanels.isEmpty else { return }
+        editPanels { stagedPanels.removeAll() }
+    }
+
+    func setLayoutColumns(_ value: Int) {
+        let clamped = max(1, min(4, value))
+        guard clamped != layoutColumns else { return }
+        editPanels { layoutColumns = clamped }
+    }
 
     /// The A, B, C … label of each staged panel, by position.
     var panelLabels: [String] { FigureLayout.defaultLabels(count: stagedPanels.count) }

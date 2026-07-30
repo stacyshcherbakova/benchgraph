@@ -73,7 +73,7 @@ import Foundation
         #expect(restored.plotStyle == "Box")
         #expect(restored.showSignificance == false)
         #expect(restored.themeName == "Nature")
-        #expect(restored.version == 2)
+        #expect(restored.version == ProjectDocument.currentVersion)
     }
 
     /// A v1 file (no option keys) must still load, with options coming back nil.
@@ -88,5 +88,114 @@ import Foundation
         #expect(doc.plotStyle == nil)
         #expect(doc.showSignificance == nil)
         #expect(doc.themeName == nil)
+        #expect(doc.panels == nil)
+    }
+
+    /// A v2 file (options but no panel keys) must still load, with the v3 fields
+    /// coming back nil rather than failing to decode.
+    @Test func legacyV2FileStillLoads() throws {
+        let v2 = #"""
+        {"analysisName":"anova.oneway","data":"A,B\n1,2","errorBar":"SD","hasHeader":true,"plotStyle":"Box","savedWithEngine":"0.1.0-mvp","showResiduals":false,"showSignificance":true,"tableKind":"column","themeName":"Nature","version":2}
+        """#
+        let doc = try ProjectDocument.decoded(from: Data(v2.utf8))
+        #expect(doc.version == 2)
+        #expect(doc.errorBar == .sd)
+        #expect(doc.plotStyle == "Box")
+        #expect(doc.themeName == "Nature")
+        #expect(doc.panels == nil)
+        #expect(doc.layoutColumns == nil)
+        #expect(doc.interpolateTargets == nil)
+    }
+
+    // MARK: - v3 multi-panel staging
+
+    @Test func panelsRoundTrip() throws {
+        let panels = [
+            PanelRecord(request: .bars(title: "Groups", yLabel: "Mean ± SEM",
+                                       groups: [.init(label: "Ctrl", value: 5, error: 0.3)],
+                                       brackets: []),
+                        title: "Groups", sourceData: "Ctrl\n5\n"),
+            PanelRecord(request: .scatter(title: "Fit", xLabel: "X", yLabel: "Y",
+                                          series: [.init(name: "d", points: [.init(x: 1, y: 2)])],
+                                          curve: nil, logX: true),
+                        title: "Fit", sourceData: "X,Y\n1,2\n")
+        ]
+        let doc = ProjectDocument(
+            tableKind: .xy, data: "X,Y\n1,2", hasHeader: true, analysisName: "doseresponse.4pl",
+            panels: panels, layoutColumns: 3, interpolateTargets: [50, 75]
+        )
+        let restored = try ProjectDocument.decoded(from: doc.encoded())
+        #expect(restored == doc)
+        #expect(restored.version == 3)
+        #expect(restored.panels?.count == 2)
+        #expect(restored.panels?[0].title == "Groups")
+        #expect(restored.panels?[1].sourceData == "X,Y\n1,2\n")
+        #expect(restored.layoutColumns == 3)
+        #expect(restored.interpolateTargets == [50, 75])
+    }
+
+    /// Panel order is the A/B/C order, so it must survive verbatim.
+    @Test func panelOrderIsPreserved() throws {
+        let titles = ["First", "Second", "Third"]
+        let doc = ProjectDocument(
+            tableKind: .column, data: "A\n1", hasHeader: true, analysisName: "descriptive",
+            panels: titles.map {
+                PanelRecord(request: .bars(title: $0, yLabel: "y",
+                                           groups: [.init(label: "g", value: 1, error: 0)],
+                                           brackets: []),
+                            title: $0)
+            })
+        let restored = try ProjectDocument.decoded(from: doc.encoded())
+        #expect(restored.panels?.map(\.title) == titles)
+    }
+
+    /// The end-to-end guarantee a user relies on: build a multi-panel figure,
+    /// save the project, reopen it, export — and get the same figure back.
+    @Test func composedFigureSurvivesASaveAndReopen() throws {
+        let requests: [FigureExport.Request] = [
+            .bars(title: "A", yLabel: "y", groups: [.init(label: "g1", value: 3, error: 0.4),
+                                                    .init(label: "g2", value: 6, error: 0.5)],
+                  brackets: [BarBracket(fromIndex: 0, toIndex: 1, label: "**", level: 0)]),
+            .box(title: "B", yLabel: "Value",
+                 groups: [.init(label: "g", stats: BoxStats.compute([2, 4, 5, 7, 9]))], brackets: []),
+            .scatter(title: "C", xLabel: "X", yLabel: "Y",
+                     series: [.init(name: "d", points: [.init(x: 1, y: 2), .init(x: 4, y: 9)])],
+                     curve: [.init(x: 1, y: 2), .init(x: 4, y: 9)], logX: false)
+        ]
+        let labels = FigureLayout.defaultLabels(count: requests.count)
+        let before = FigureLayout.data(zip(requests, labels).map {
+            FigureLayout.Panel(request: $0, label: $1)
+        }, pathExtension: "svg", layout: .init(columns: 2))
+
+        let doc = ProjectDocument(
+            tableKind: .column, data: "g1,g2\n3,6", hasHeader: true, analysisName: "anova.oneway",
+            panels: zip(requests, labels).map { PanelRecord(request: $0, title: $1) },
+            layoutColumns: 2)
+        let reopened = try ProjectDocument.decoded(from: doc.encoded())
+
+        let restored = try #require(reopened.panels)
+        #expect(reopened.layoutColumns == 2)
+        let after = FigureLayout.data(restored.enumerated().map {
+            FigureLayout.Panel(request: $0.element.request, label: labels[$0.offset])
+        }, pathExtension: "svg", layout: .init(columns: reopened.layoutColumns ?? 2))
+
+        #expect(before != nil)
+        #expect(before == after, "the composed figure changed across a save/reopen")
+    }
+
+    /// A staged panel must render the same after a save/load cycle — the point
+    /// of storing the drawn figure rather than a recipe (spec D5).
+    @Test func restoredPanelRendersIdentically() throws {
+        let request = FigureExport.Request.box(
+            title: "Box", yLabel: "Value",
+            groups: [.init(label: "A", stats: BoxStats.compute([1, 2, 3, 4, 5]))],
+            brackets: [])
+        let doc = ProjectDocument(
+            tableKind: .column, data: "A\n1", hasHeader: true, analysisName: "descriptive",
+            panels: [PanelRecord(request: request, title: "Box")])
+        let restored = try ProjectDocument.decoded(from: doc.encoded())
+        let reloaded = try #require(restored.panels?.first?.request)
+        #expect(FigureExport.data(reloaded, pathExtension: "svg")
+                == FigureExport.data(request, pathExtension: "svg"))
     }
 }

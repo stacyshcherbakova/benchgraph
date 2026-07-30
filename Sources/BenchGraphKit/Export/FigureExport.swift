@@ -7,12 +7,19 @@ import Foundation
 /// chooses the palette and fonts and is shared across all formats.
 public enum FigureExport {
 
-    public enum Request: Sendable {
+    /// A renderer-agnostic description of one figure.
+    ///
+    /// `Codable` because staged multi-panel figures are persisted verbatim into
+    /// the `.benchgraph` project file. The synthesized coding keys are therefore
+    /// a file-format contract: renaming a case or an associated-value label
+    /// invalidates existing project files. `RequestCodableTests` pins the keys so
+    /// such a rename breaks a test rather than a user's saved work.
+    public enum Request: Sendable, Equatable, Codable {
         case bars(title: String, yLabel: String, groups: [SVGRenderer.BarGroup], brackets: [BarBracket])
         case box(title: String, yLabel: String, groups: [SVGRenderer.BoxGroup], brackets: [BarBracket])
         case violin(title: String, yLabel: String, groups: [SVGRenderer.ViolinGroup], brackets: [BarBracket])
         case scatter(title: String, xLabel: String, yLabel: String,
-                     series: [SVGRenderer.Series], curve: [(x: Double, y: Double)]?, logX: Bool)
+                     series: [SVGRenderer.Series], curve: [PlotPoint]?, logX: Bool)
 
         /// The figure's title, regardless of chart type.
         public var title: String {

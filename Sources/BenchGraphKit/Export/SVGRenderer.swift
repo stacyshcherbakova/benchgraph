@@ -5,20 +5,35 @@ import Foundation
 /// SVG is chosen for the MVP because it is text, so it can be diffed and
 /// snapshot-tested (the roadmap's validation plan asks for "snapshot test
 /// exported SVG structure"), and it converts cleanly to PDF/TIFF downstream.
+/// One (x, y) sample in a scatter series or a fitted curve.
+///
+/// A nominal struct rather than a `(x: Double, y: Double)` tuple so figure
+/// requests can be `Codable` — Swift cannot synthesize `Codable` or `Equatable`
+/// for tuples, and staged panels are persisted into the `.benchgraph` project
+/// file exactly as they were drawn (see the spec's D5).
+public struct PlotPoint: Sendable, Equatable, Codable {
+    public let x: Double
+    public let y: Double
+    public init(x: Double, y: Double) {
+        self.x = x
+        self.y = y
+    }
+}
+
 public struct SVGRenderer {
 
-    public struct Series: Sendable {
+    public struct Series: Sendable, Equatable, Codable {
         public let name: String
-        public let points: [(x: Double, y: Double)]
+        public let points: [PlotPoint]
         public let color: String
-        public init(name: String, points: [(x: Double, y: Double)], color: String = "#2C6FBB") {
+        public init(name: String, points: [PlotPoint], color: String = "#2C6FBB") {
             self.name = name
             self.points = points
             self.color = color
         }
     }
 
-    public struct BarGroup: Sendable {
+    public struct BarGroup: Sendable, Equatable, Codable {
         public let label: String
         public let value: Double
         public let error: Double      // half-length of the error bar (e.g. SEM)
@@ -32,7 +47,7 @@ public struct SVGRenderer {
     }
 
     /// One box-and-whisker group: a label and its precomputed `BoxStats`.
-    public struct BoxGroup: Sendable {
+    public struct BoxGroup: Sendable, Equatable, Codable {
         public let label: String
         public let stats: BoxStats
         public init(label: String, stats: BoxStats) {
@@ -43,7 +58,7 @@ public struct SVGRenderer {
 
     /// One violin group: a kernel-density profile plus box stats for the
     /// median/quartile overlay drawn inside the violin.
-    public struct ViolinGroup: Sendable {
+    public struct ViolinGroup: Sendable, Equatable, Codable {
         public let label: String
         public let density: [KernelDensity.Sample]
         public let stats: BoxStats
@@ -79,7 +94,7 @@ public struct SVGRenderer {
         xLabel: String,
         yLabel: String,
         series: [Series],
-        curve: [(x: Double, y: Double)]? = nil,
+        curve: [PlotPoint]? = nil,
         logX: Bool = false
     ) -> String {
         let allPoints = series.flatMap { $0.points } + (curve ?? [])

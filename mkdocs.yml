@@ -37,6 +37,11 @@ markdown_extensions:
 
 nav:
   - Home: README.md
+  - Guide:
+      - Getting started: guide/getting-started.md
+      - Choosing an analysis: guide/choosing-an-analysis.md
+      - Multi-panel figures: guide/multi-panel-figures.md
+      - Exporting and provenance: guide/exporting-and-provenance.md
   - Project spec: project-spec.md
   - Research:
       - Market research: research/market-research.md

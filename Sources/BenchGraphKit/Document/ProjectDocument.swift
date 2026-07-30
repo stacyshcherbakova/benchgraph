@@ -10,9 +10,15 @@ public struct ProjectDocument: Codable, Equatable {
     ///
     /// v2 adds the chart/analysis presentation options so a saved project
     /// reopens *exactly* as configured, not just with its data and analysis.
-    /// The new fields are optional, so v1 files still load (options come back
-    /// nil and the app falls back to its defaults).
-    public static let currentVersion = 2
+    ///
+    /// v3 adds the staged multi-panel figure — the panels themselves, the grid
+    /// width, and any 4PL interpolation targets — so a part-built figure
+    /// survives a save. Panels are stored as the rendered figure rather than a
+    /// recipe to re-run (see the spec's D5).
+    ///
+    /// Every field added after v1 is optional, so older files still load: the
+    /// options come back nil and the app falls back to its defaults.
+    public static let currentVersion = 3
 
     /// Conventional file extension for project files.
     public static let fileExtension = "benchgraph"
@@ -44,6 +50,15 @@ public struct ProjectDocument: Codable, Equatable {
     /// Whether a regression/dose-response figure shows residuals instead of the fit.
     public var showResiduals: Bool?
 
+    // MARK: Multi-panel staging (schema v3+, optional for back-compat)
+
+    /// Figures staged for the multi-panel layout, in A/B/C order.
+    public var panels: [PanelRecord]?
+    /// How many panels per row in the composed figure.
+    public var layoutColumns: Int?
+    /// 4PL response values to interpolate x back at.
+    public var interpolateTargets: [Double]?
+
     public init(
         tableKind: TableKind,
         data: String,
@@ -54,6 +69,9 @@ public struct ProjectDocument: Codable, Equatable {
         showSignificance: Bool? = nil,
         themeName: String? = nil,
         showResiduals: Bool? = nil,
+        panels: [PanelRecord]? = nil,
+        layoutColumns: Int? = nil,
+        interpolateTargets: [Double]? = nil,
         version: Int = ProjectDocument.currentVersion,
         savedWithEngine: String = BenchGraph.version
     ) {
@@ -68,6 +86,9 @@ public struct ProjectDocument: Codable, Equatable {
         self.showSignificance = showSignificance
         self.themeName = themeName
         self.showResiduals = showResiduals
+        self.panels = panels
+        self.layoutColumns = layoutColumns
+        self.interpolateTargets = interpolateTargets
     }
 
     public enum LoadError: Error, Equatable {

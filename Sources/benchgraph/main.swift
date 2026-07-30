@@ -165,10 +165,11 @@ func runRegress(_ o: Options) throws {
                                  title: "Linear regression — residuals")
         } else {
             let xMin = x.min()!, xMax = x.max()!
-            let line = [(x: xMin, y: fit.predict(xMin)), (x: xMax, y: fit.predict(xMax))]
+            let line = [PlotPoint(x: xMin, y: fit.predict(xMin)),
+                        PlotPoint(x: xMax, y: fit.predict(xMax))]
             req = .scatter(
                 title: "Linear regression", xLabel: "X", yLabel: "Y",
-                series: [.init(name: "data", points: zip(x, y).map { (x: $0, y: $1) })],
+                series: [.init(name: "data", points: zip(x, y).map { PlotPoint(x: $0, y: $1) })],
                 curve: line, logX: false)
         }
         try renderFigure(req, to: path, theme: try o.resolvedTheme())
@@ -177,7 +178,7 @@ func runRegress(_ o: Options) throws {
 
 func runDoseResponse(_ o: Options) throws {
     let (x, y) = try o.loadXY()
-    let interpolate = (o.value("interpolate") ?? "").split(separator: ",").compactMap { Double($0) }
+    let interpolate = FourPL.parseTargets(o.value("interpolate") ?? "")
     let result = FourPL.analyze(x: x, y: y, interpolateY: interpolate)
     print(format(result, header: "Dose-response (4PL)"))
 
@@ -191,14 +192,14 @@ func runDoseResponse(_ o: Options) throws {
             let positiveX = x.filter { $0 > 0 }
             let lo = log10(positiveX.min() ?? 1)
             let hi = log10(positiveX.max() ?? 10)
-            let curve = stride(from: lo, through: hi, by: (hi - lo) / 80).map { exp -> (x: Double, y: Double) in
+            let curve = stride(from: lo, through: hi, by: (hi - lo) / 80).map { exp -> PlotPoint in
                 let xv = pow(10, exp)
-                return (x: xv, y: fit.predict(xv))
+                return PlotPoint(x: xv, y: fit.predict(xv))
             }
             req = .scatter(
                 title: "Dose-response (4PL)",
                 xLabel: "Concentration (log scale)", yLabel: "Response",
-                series: [.init(name: "data", points: zip(x, y).map { (x: $0, y: $1) })],
+                series: [.init(name: "data", points: zip(x, y).map { PlotPoint(x: $0, y: $1) })],
                 curve: curve, logX: true)
         }
         try renderFigure(req, to: path, theme: try o.resolvedTheme())
@@ -209,13 +210,13 @@ func runDoseResponse(_ o: Options) throws {
 /// shared by the regression and dose-response commands.
 func residualFigure(x: [Double], y: [Double], predict: (Double) -> Double,
                     logX: Bool, title: String) -> FigureExport.Request {
-    let points = zip(x, y).map { (x: $0, y: $1 - predict($0)) }
+    let points = zip(x, y).map { PlotPoint(x: $0, y: $1 - predict($0)) }
     let xs = logX ? x.filter { $0 > 0 } : x
     let lo = xs.min() ?? 0, hi = xs.max() ?? 1
     return .scatter(title: title, xLabel: logX ? "Concentration (log scale)" : "X",
                     yLabel: "Residual",
                     series: [.init(name: "resid", points: points)],
-                    curve: [(x: lo, y: 0), (x: hi, y: 0)], logX: logX)
+                    curve: [PlotPoint(x: lo, y: 0), PlotPoint(x: hi, y: 0)], logX: logX)
 }
 
 // MARK: - Output formatting

@@ -6,7 +6,8 @@ import Foundation
 /// checking each format's magic bytes and that output is non-trivial.
 @Suite struct ExportFormatsTests {
 
-    private let series = [SVGRenderer.Series(name: "d", points: [(1, 2), (2, 4), (3, 5), (4, 8)])]
+    private let series = [SVGRenderer.Series(name: "d", points: [.init(x: 1, y: 2), .init(x: 2, y: 4),
+                                                                 .init(x: 3, y: 5), .init(x: 4, y: 8)])]
     private let bars = [
         SVGRenderer.BarGroup(label: "A", value: 10, error: 2),
         SVGRenderer.BarGroup(label: "B", value: 14, error: 3)
@@ -45,9 +46,9 @@ import Foundation
 
     @Test func curveAndLogAxisRender() {
         // 4PL-style curve on a log X axis should still produce a valid PDF.
-        let curve = (0...20).map { i -> (x: Double, y: Double) in
+        let curve = (0...20).map { i -> PlotPoint in
             let x = pow(10, Double(i) / 5)
-            return (x: x, y: 100 / (1 + 10 / x))
+            return PlotPoint(x: x, y: 100 / (1 + 10 / x))
         }
         let data = CGChartRenderer().scatter(
             format: .pdf, title: "Dose-response", xLabel: "Conc", yLabel: "Resp",

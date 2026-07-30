@@ -28,6 +28,7 @@ DMG="$ROOT/BenchGraph.dmg"
 VERSION="0.1.0"
 BUNDLE_ID="com.benchgraph.app"
 UTI="com.benchgraph.project"
+PANEL_UTI="com.benchgraph.panel"
 
 echo "Building BenchGraphApp ($CONFIG)..."
 swift build -c "$CONFIG" --product BenchGraphApp
@@ -89,6 +90,14 @@ cat > "$APP/Contents/Info.plist" <<PLIST
                 <key>public.filename-extension</key>
                 <array><string>benchgraph</string></array>
             </dict>
+        </dict>
+        <!-- In-process drag type for reordering staged panels. Declared so the
+             system knows it; it never appears on disk. -->
+        <dict>
+            <key>UTTypeIdentifier</key>      <string>${PANEL_UTI}</string>
+            <key>UTTypeDescription</key>     <string>BenchGraph Figure Panel</string>
+            <key>UTTypeConformsTo</key>
+            <array><string>public.data</string></array>
         </dict>
     </array>
 </dict>
