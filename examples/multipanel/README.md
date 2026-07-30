@@ -30,10 +30,17 @@ exercise the XLSX importer.
 ## Building the figure in the app
 
 1. Import a file (**Import…**), pick the matching analysis, choose the chart
-   style, then **Add panel**.
+   style, then **Add current chart** in the *Multi-panel figure* section at the
+   bottom of the left pane.
 2. Repeat for each file. Panels are labelled A, B, C… in staging order; reorder
-   with the arrows on each card.
-3. Export the composed figure — it writes one combined SVG / PDF / PNG / TIFF
+   by right-clicking a panel card and choosing **Move left** / **Move right**.
+   With two or more panels a **Columns** stepper appears to set the grid width.
+3. Export with the **Export figure…** button *inside the Multi-panel section*
+   (grid icon) — not the one in the toolbar, which exports only the single
+   chart currently on screen. It writes one combined SVG / PDF / PNG / TIFF
    plus an export manifest.
+
+Note: staged panels are not saved into a `.benchgraph` project and are not
+covered by undo, so build and export a multi-panel figure in one sitting.
 
 `preview.png` is what all four panels look like composed in a 2×2 grid.
