@@ -86,18 +86,5 @@ The window title shows the project name, and a dot appears in the close button
 while you have unsaved changes. Quitting or opening another project with unsaved
 work asks first.
 
-## Keyboard shortcuts
-
-| Shortcut | Action |
-| --- | --- |
-| ⌘N / ⌘O | New project / open one |
-| ⌘S / ⇧⌘S | Save / Save As |
-| ⌘I | Import data |
-| ⌘E / ⇧⌘E | Export chart / export panels |
-| ⌘Z / ⇧⌘Z | Undo / redo |
-| ⌘? | Help |
-
-## Undo
-
 ⌘Z undoes any change — a cell edit, an option change, staging or clearing a
 panel. ⇧⌘Z redoes.
