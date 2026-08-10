@@ -93,22 +93,6 @@ public enum BenchGraphDocs {
                 "Set Columns to choose how many panels sit in each row. The summary line shows the resulting grid.",
                 "Press Export panels… to write the combined figure. The Export chart… button in the toolbar exports only the single chart on screen.",
                 "Staged panels are saved with the project and covered by ⌘Z, so a Clear can be undone."
-            ]),
-        HelpTopic(
-            id: "exporting-and-provenance",
-            title: "Exporting And Provenance",
-            summary: """
-            Every export can be traced back to the data and options that produced \
-            it. Figures go out as vector or raster, and a manifest written \
-            alongside records exactly how the numbers were obtained.
-            """,
-            steps: [
-                "Export chart… writes the single chart on screen; Export panels… writes the staged multi-panel figure.",
-                "Choose the format by file extension: .svg and .pdf stay vector and scale without loss, .png and .tiff are raster.",
-                "Copy (vector) puts the figure on the clipboard as both PDF and SVG, for pasting straight into Illustrator, Word, or Keynote.",
-                "A .manifest.json is written next to the figure recording the data source, analysis, options, engine version, and the full result — keep it with the figure for your records.",
-                "Save the project as a .benchgraph file to keep the data, options, and staged panels together. The format is plain JSON and versioned, so it stays readable.",
-                "Panels are stored exactly as they were drawn, so reopening a project will not silently redraw a figure you have already published."
             ])
     ]
 }

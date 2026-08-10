@@ -71,10 +71,6 @@ struct BenchGraphApp: App {
                     NotificationCenter.default.post(name: .showBenchGraphHelp,
                                                     object: "multi-panel-figures")
                 }
-                Button("Exporting And Provenance") {
-                    NotificationCenter.default.post(name: .showBenchGraphHelp,
-                                                    object: "exporting-and-provenance")
-                }
                 Divider()
                 Button("Full Documentation Online") {
                     NSWorkspace.shared.open(BenchGraphDocs.siteURL)

@@ -68,8 +68,10 @@ Depending on the analysis you will see some of:
   Illustrator, Word, or Keynote.
 
 Use `.svg` or `.pdf` to stay vector and scale without loss; `.png` and `.tiff`
-are raster. A `.manifest.json` is written alongside recording how the figure was
-made — see [Exporting and provenance](./exporting-and-provenance.md).
+are raster. A `.manifest.json` is written alongside each figure, recording the
+data source, the analysis and its options, the engine version, and the full
+result. Keep it with the figure — it is what makes the figure reproducible
+later, or by someone else.
 
 To combine several charts into one lettered figure, see
 [Multi-panel figures](./multi-panel-figures.md).

@@ -108,5 +108,4 @@ that number surprises you, check the grid before trusting the result.
 
 ---
 
-Next: [Multi-panel figures](./multi-panel-figures.md) or
-[Exporting and provenance](./exporting-and-provenance.md).
+Next: [Multi-panel figures](./multi-panel-figures.md).

@@ -50,7 +50,7 @@ jobs:
       # present explicitly too, in case that test is ever made lenient.
       - name: Check the guide pages the app links to exist
         run: |
-          for slug in getting-started choosing-an-analysis multi-panel-figures exporting-and-provenance; do
+          for slug in getting-started choosing-an-analysis multi-panel-figures; do
             test -f "docs/guide/$slug.md" || { echo "missing docs/guide/$slug.md"; exit 1; }
           done
 

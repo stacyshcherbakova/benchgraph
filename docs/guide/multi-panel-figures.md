@@ -83,7 +83,3 @@ documented so you can check the analyses recover it:
 
 There is also `B-treatment-groups.xlsx` — the same data as a workbook, for
 trying the XLSX importer.
-
----
-
-Next: [Exporting and provenance](./exporting-and-provenance.md).

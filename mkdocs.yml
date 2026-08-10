@@ -41,7 +41,6 @@ nav:
       - Getting started: guide/getting-started.md
       - Choosing an analysis: guide/choosing-an-analysis.md
       - Multi-panel figures: guide/multi-panel-figures.md
-      - Exporting and provenance: guide/exporting-and-provenance.md
   - Research:
       - Market research: research/market-research.md
       - Prism analysis templates: research/prism-analysis-templates.md
