@@ -26,4 +26,3 @@ straight from the engine:
 
 - Source-check dates vary by document and are noted at the top of each research/reference page.
 - These docs began as research and product planning; the project now also has an implemented engine, CLI, and SwiftUI app. See the roadmap's [Implementation Status](./product/mvp-roadmap.md#implementation-status) for what's built.
-- The product should be described as "Prism-like" only in internal notes. Public naming and copy should avoid GraphPad Prism branding.

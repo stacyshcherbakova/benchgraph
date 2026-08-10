@@ -54,8 +54,8 @@ end-to-end: **import data → run an analysis → export a figure**.
   on double-click). A **Help menu** carries quick-start cards backed by the
   published guide.
 
-The signing/notarization/DMG pipeline is scripted in `scripts/build-app.sh`;
-producing a distributable signed DMG needs an Apple Developer ID credential.
+The DMG pipeline is scripted in `scripts/build-app.sh`. Producing a
+distributable build requires an Apple Developer Program subscription.
 
 ## Requirements
 

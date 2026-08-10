@@ -12,13 +12,12 @@ copy-as-vector, and residual plots. Since then the multi-panel workflow has been
 finished off — panels reorder by dragging, are covered by undo, and persist into
 the project file — and the app has gained a Help menu backed by a published
 [user guide](../guide/getting-started.md). The `.benchgraph` document type is
-registered and the signing/notarization/DMG pipeline is scripted.
+registered and the DMG pipeline is scripted.
 
-**Packaging** is the only thing between here and a shippable *build*: running
-that pipeline with an Apple Developer ID credential. **V1 as defined below is a
-larger target** — six of its nine bullets (in-app updates, crash reporting,
-journal-size presets, XLSX export, R/Python export, power calculators) have no
-code yet. See the ticked [MVP Scope](#mvp-scope) and
+**Shipping a build needs an Apple Developer Program subscription.** **V1 as
+defined below is a larger target** — six of its nine bullets (in-app updates,
+crash reporting, journal-size presets, XLSX export, R/Python export, power
+calculators) have no code yet. See the ticked [MVP Scope](#mvp-scope) and
 [Version Roadmap](#version-roadmap) below.
 
 ## Product Thesis
@@ -66,13 +65,13 @@ figure-serialisation, panel-order, interpolation, and help-catalog tests.
 | Live provenance (assumptions, warnings, excluded, formula) | Done |
 | In-app Help menu + published user guide | Done |
 | File menu, standard shortcuts, unsaved-changes tracking | Done |
-| Signed + notarized DMG | Pipeline scripted; needs Apple Developer ID to run |
+| Distributable DMG | Pipeline scripted; needs an Apple Developer Program subscription |
 
 ## MVP
 
 ### Goal
 
-A signed, notarized macOS DMG that lets a user create a local project, enter/import data, run a small set of validated analyses, generate publication-quality graphs, assemble simple figure layouts, and export clean files.
+A distributable macOS DMG that lets a user create a local project, enter/import data, run a small set of validated analyses, generate publication-quality graphs, assemble simple figure layouts, and export clean files. Distribution requires an Apple Developer Program subscription.
 
 ### MVP User Promise
 
@@ -189,7 +188,7 @@ Target: solo researchers and small labs.
 
 - Complete MVP scope. *(done)*
 - Strong project file format. *(done — schema v3)*
-- Installer DMG, signed/notarized release pipeline. *(scripted; needs an Apple Developer ID to run)*
+- Installer DMG and release pipeline. *(scripted; needs an Apple Developer Program subscription)*
 - In-app update mechanism. *(not started)*
 - Crash reporting with explicit opt-in. *(not started)*
 - Expanded graph templates and journal-size presets. *(journal themes shipped; size presets not started — `FigureLayout.Spec` has the geometry but nothing exposes it)*
@@ -242,7 +241,7 @@ The MVP architecture is now built; see the
 
 Still forward-looking:
 
-- Distribution: `scripts/build-app.sh` scripts Developer ID signing (hardened runtime), notarization (`notarytool`), and DMG packaging behind environment variables; running it end-to-end needs an Apple Developer ID credential. Optional Sparkle-style signed updates remain future work.
+- Distribution: `scripts/build-app.sh` scripts the whole DMG pipeline behind environment variables; running it needs an Apple Developer Program subscription. In-app updates remain future work.
 - Privacy: default offline. Any telemetry, crash reporting, licensing, or cloud sync must be explicit and separable.
 
 ## Product Risks
@@ -250,7 +249,7 @@ Still forward-looking:
 - **Statistical correctness**: one wrong P value can destroy trust. Use reference datasets, independent calculations, and visible assumptions.
 - **Workflow ambiguity**: repeated measures, missing values, nested designs, and multiple comparisons are easy to mis-specify. The UI must guide structure before running tests.
 - **Graph export quality**: scientists will judge the app by the exported PDF/SVG/TIFF. Export must be deterministic and editable downstream.
-- **Mac distribution friction**: signing, notarization, DMG packaging, licensing, and updates are production work, not polish.
+- **Mac distribution friction**: distribution requires an Apple Developer Program subscription, and packaging, licensing, and updates are production work, not polish.
 - **Native chart limits**: standard Apple chart components may not satisfy publication layout, axis, annotation, and export requirements.
 - **Scope creep**: competing with SPSS/JMP/Stata method breadth is not viable early. Focus on common wet-lab workflows.
 - **Pricing pressure**: open-source tools are free and Prism is entrenched. The app needs clear value: less friction, better Mac UX, better exports, and fair lab licensing.
@@ -270,4 +269,4 @@ Still forward-looking:
 - Should the first pricing model be personal/lab perpetual, subscription, or hybrid?
 - Should R/Python export be in MVP or V1?
 - ~~Is XLSX import critical for MVP?~~ Resolved: basic XLSX import shipped in the MVP via a dependency-free reader.
-- Does the target buyer value App Store distribution, or is direct DMG expected?
+- ~~Does the target buyer value App Store distribution, or is direct DMG expected?~~ Resolved: direct DMG download, no App Store.

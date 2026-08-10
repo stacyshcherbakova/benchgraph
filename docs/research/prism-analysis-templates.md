@@ -3,9 +3,8 @@
 Source check date: 2026-06-07.
 
 Internal reference only. This page catalogs the analyses GraphPad Prism exposes,
-so we can scope which ones a Prism-like app needs and in what order. As noted in
-the [docs index](../README.md), public naming and copy should avoid GraphPad Prism
-branding; this catalog is research, not marketing copy and not a compatibility claim.
+so we can scope which ones we need and in what order. It is research, not
+marketing copy and not a compatibility claim.
 
 In Prism, the available analyses depend on the **data table type**. The same
 "Analyze" dialog filters its options based on whether the active table is XY,

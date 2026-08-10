@@ -46,7 +46,7 @@ Sources/
 Tests/             SciPy-validated golden-value + rendering + multi-panel +
                    manifest + XLSX + editable-grid + project-file +
                    figure-Codable + panel-order + interpolation + help tests
-scripts/           build-app.sh (bundle + signing/notarization/DMG), test.sh,
+scripts/           build-app.sh (bundle + DMG), test.sh, docs.sh,
                    make-icon.swift
 assets/            generated AppIcon.icns
 examples/          sample CSVs, plus a four-file multi-panel demo study
@@ -197,8 +197,8 @@ table.
 - **Not a full Prism clone.** Build the smallest credible workflow that makes a
   Mac-heavy lab switch for routine analyses, not every feature.
 - **Local-first, no cloud/sync** in the MVP.
-- **Direct DMG distribution, not the Mac App Store** (signing/notarization is
-  the remaining *packaging* step; see the roadmap for the rest of V1).
+- **Direct DMG distribution, not the Mac App Store.** Distribution requires an
+  Apple Developer Program subscription.
 - **Large-data performance is not a target.** Data is embedded as text in the
   project file on the assumption that bench-science datasets are small.
 
@@ -225,9 +225,8 @@ table.
 - **XLSX import scope**: the reader handles a single sheet, shared/inline
   strings, and numbers; multi-sheet selection, styled/date cells, and formulas
   (beyond their cached value) are out of scope for now.
-- Ship the **signed/notarized DMG**: the pipeline is scripted in
-  `build-app.sh`; running it needs an Apple Developer ID credential. Tracked in
-  the [roadmap](./product/mvp-roadmap.md).
+- Ship the **DMG**: the pipeline is scripted in `build-app.sh` and needs an
+  Apple Developer Program subscription to run.
 
 ## Build, Test, Run
 
@@ -238,9 +237,8 @@ swift build                 # build the library + CLI
 open BenchGraph.app         # launch the desktop app
 ```
 
-`build-app.sh` produces an ad-hoc-signed bundle by default. For a distributable
-build, set `DEVELOPER_ID_APP` (hardened-runtime Developer ID signing),
-`MAKE_DMG=1` (package a DMG), and `NOTARY_PROFILE` (submit to `notarytool` and
-staple). See the header of `scripts/build-app.sh` for the exact variables.
+`build-app.sh` builds for local use by default. A distributable DMG needs an
+Apple Developer Program subscription; see the header of `scripts/build-app.sh`
+for the variables that enable it.
 
 See the repository's top-level `README.md` for CLI command examples.
