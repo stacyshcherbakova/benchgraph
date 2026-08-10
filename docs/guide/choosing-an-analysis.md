@@ -49,10 +49,10 @@ under the picker always states the current expectation.
 | Fit a straight line | Linear regression | XY |
 | Fit a sigmoid, get an EC50 | 4PL dose-response | XY |
 
-### Notes on the ones people get wrong
+### Choosing between similar tests
 
-**Welch is the default.** It does not assume the two groups have equal
-variances. Choose Student's only if you have a reason to assume they do.
+**Welch or Student.** Welch does not assume the two groups have equal variances.
+Choose Student's only if you have a reason to assume they do.
 
 **Paired means paired by row.** For a paired t test or Wilcoxon, row 3 of column
 1 and row 3 of column 2 must be the same subject. Pairing removes
@@ -71,8 +71,37 @@ line to predict y from x. If the direction matters, use regression.
 ## Read the provenance before you report
 
 The result pane lists the **assumptions** each test relies on and **warns** when
-your data strains them — a small sample for a four-parameter fit, a fit that did
-not fully converge, an interpolation target outside the fitted range.
+your data strains them.
+
+A 4PL fit on the demo dose-response data, asking for the concentration at 50%
+response:
+
+```
+Analysis: 4PL dose-response (nonlinear regression)
+Formula:  y = D + (A − D) / (1 + (x/C)^B); fit by Levenberg-Marquardt
+Results:
+  Bottom (A)      97.096
+  Hill slope (B)  1.113
+  EC50 (C)        45.549
+  Top (D)         5.6004
+  R squared       0.99302
+  x at y=50       48.027
+Assumptions:
+  • Sigmoidal dose-response.
+  • Independent, approximately constant-variance residuals.
+```
+
+The same analysis on four points, asking for a response above the fitted range:
+
+```
+Warnings:
+  ⚠ y = 150 is outside the fitted range (-2.27647 to 99.6489); no x could be interpolated.
+  ⚠ Few points for a 4-parameter model (n = 4).
+```
+
+Note the R² of 1 that case reports: with four points and four parameters the
+curve passes through every point, so R² says nothing about whether the fit is
+trustworthy. The warnings do.
 
 **Excluded cells** counts anything blank or non-numeric that was left out. If
 that number surprises you, check the grid before trusting the result.
