@@ -95,8 +95,7 @@ work asks first.
 | ⌘Z / ⇧⌘Z | Undo / redo |
 | ⌘? | Help |
 
-## Undo covers everything
+## Undo
 
 ⌘Z undoes any change — a cell edit, an option change, staging or clearing a
-panel. ⇧⌘Z redoes. A run of typing collapses into one undo step, so you are not
-stepping back a character at a time.
+panel. ⇧⌘Z redoes.
