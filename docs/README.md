@@ -17,10 +17,10 @@ straight from the engine:
 
 ## Documents
 
-- [Project spec](./project-spec.md): system architecture and the design decisions behind the engine, CLI, app, and project-file format.
 - [Market research](./research/market-research.md): GraphPad Prism and adjacent scientific stats/plotting alternatives.
 - [Prism analysis templates](./research/prism-analysis-templates.md): internal reference cataloging the analyses Prism exposes, used to scope our validated subset and its ordering.
 - [MVP and roadmap](./product/mvp-roadmap.md): first product shape, staged roadmap, workflows, and risks for a macOS DMG app.
+- [Project spec](./project-spec.md): system architecture and the design decisions behind the engine, CLI, app, and project-file format.
 
 ## Notes
 
