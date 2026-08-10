@@ -14,3 +14,9 @@
 
 # Claude Code local config
 /.claude/
+
+# Local docs preview environment (scripts/docs.sh)
+/.venv-docs/
+
+# Auto-generated local editor metadata
+/benchgraph.project
