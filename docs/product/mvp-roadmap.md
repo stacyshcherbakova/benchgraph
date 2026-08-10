@@ -115,17 +115,13 @@ A distributable macOS DMG that lets a user create a local project, enter/import 
 - Help:
   - [x] In-app Help menu with task-shaped cards for the core workflows.
   - [x] Published user guide, linked from the app. *(one catalog drives both; a test binds each card to its page)*
-
+  
 ### Out Of Scope For MVP
 
-- Cloud collaboration.
-- AI assistant.
 - Full Prism file import/export.
 - Full SPSS/JMP/Stata method breadth.
 - Regulatory validation claims.
 - Windows version.
-- Team admin, SSO, SCIM.
-- Complex survey methods, mixed models, survival analysis, SEM, Bayesian modules.
 
 ## Minimum Credible Feature Set
 
