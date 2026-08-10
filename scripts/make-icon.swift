@@ -1,9 +1,18 @@
 // Generates the BenchGraph app icon as an .iconset directory of PNGs.
 //
 // The icon is drawn in code (CoreGraphics) so the repo needs no binary design
-// assets and the icon is reproducible: an indigo macOS-style squircle (the
-// app's brand accent) with a white dose-response sigmoid and data points —
-// the app's signature workflow.
+// assets and the icon is reproducible: an indigo squircle (the app's brand
+// accent) carrying three descending bars under a significance bracket and an
+// asterisk.
+//
+// The bracket is the point. A bar chart alone is the most generic icon on the
+// platform; a bracket with a star over it is a *statistical figure*, which is
+// what the app makes. It also survives being small — the bars stay crisp at
+// 32px and the asterisk degrades to a dot rather than to mush.
+//
+// An earlier version drew a dose-response sigmoid with data points ringed in
+// the background colour. The rings chopped the curve into a dashed line at
+// 32px and the whole mark turned to noise; solid shapes are what read small.
 //
 // Usage:  swift scripts/make-icon.swift <output.iconset-dir>
 // Then:   iconutil -c icns -o assets/AppIcon.icns <output.iconset-dir>
@@ -46,45 +55,48 @@ func drawIcon(px: Int) -> CGImage? {
                            end: CGPoint(x: 512, y: 100),
                            options: [])
 
-    // Axis: an L from the top of the y-axis to the end of the x-axis.
-    ctx.setStrokeColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.5))
-    ctx.setLineWidth(22)
+    let white = CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1)
+
+    // Three descending bars sharing a baseline. Solid rectangles are the most
+    // robust thing to draw small, so they carry the icon at 16 and 32 px.
+    ctx.setFillColor(white)
+    let heights: [CGFloat] = [430, 296, 178]
+    let barW: CGFloat = 158, gap: CGFloat = 66
+    let spanW = 3 * barW + 2 * gap
+    let baseY: CGFloat = 232
+    var x = 512 - spanW / 2
+    for h in heights {
+        ctx.fill(CGRect(x: x, y: baseY, width: barW, height: h))
+        x += barW + gap
+    }
+
+    // Significance bracket spanning the outer bars, with downward ticks.
+    let leftX = 512 - spanW / 2 + barW / 2
+    let rightX = 512 + spanW / 2 - barW / 2
+    let bracketY: CGFloat = 730
+    ctx.setStrokeColor(white)
+    ctx.setLineWidth(28)
     ctx.setLineCap(.round)
     ctx.setLineJoin(.round)
     ctx.beginPath()
-    ctx.move(to: CGPoint(x: 268, y: 752))
-    ctx.addLine(to: CGPoint(x: 268, y: 312))
-    ctx.addLine(to: CGPoint(x: 776, y: 312))
+    ctx.move(to: CGPoint(x: leftX, y: bracketY - 44))
+    ctx.addLine(to: CGPoint(x: leftX, y: bracketY))
+    ctx.addLine(to: CGPoint(x: rightX, y: bracketY))
+    ctx.addLine(to: CGPoint(x: rightX, y: bracketY - 44))
     ctx.strokePath()
 
-    // Dose-response sigmoid.
-    func sigmoidY(_ x: CGFloat) -> CGFloat {
-        let t = (x - 528) / 78
-        return 372 + 330 / (1 + exp(-t))
-    }
-    ctx.setStrokeColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1))
-    ctx.setLineWidth(46)
+    // Asterisk: three crossing strokes. Reads as a star large, as a dot small.
+    // Offset clears the bracket: radius + half the stroke width + a gap.
+    let starR: CGFloat = 46
+    let starY = bracketY + starR + 17 + 22
+    ctx.setLineWidth(34)
     ctx.beginPath()
-    var first = true
-    var x: CGFloat = 306
-    while x <= 762 {
-        let p = CGPoint(x: x, y: sigmoidY(x))
-        if first { ctx.move(to: p); first = false } else { ctx.addLine(to: p) }
-        x += 8
+    for k in 0..<3 {
+        let a = CGFloat(k) * .pi / 3 + .pi / 2
+        ctx.move(to: CGPoint(x: 512 - cos(a) * starR, y: starY - sin(a) * starR))
+        ctx.addLine(to: CGPoint(x: 512 + cos(a) * starR, y: starY + sin(a) * starR))
     }
     ctx.strokePath()
-
-    // Data points, slightly off the curve so they read as measurements.
-    let dots: [(x: CGFloat, dy: CGFloat)] = [(352, 16), (462, -18), (572, 20), (700, -14)]
-    for d in dots {
-        let c = CGPoint(x: d.x, y: sigmoidY(d.x) + d.dy)
-        let r: CGFloat = 34
-        // Indigo ring separates the dot from the curve where they overlap.
-        ctx.setFillColor(bottom)
-        ctx.fillEllipse(in: CGRect(x: c.x - r - 10, y: c.y - r - 10, width: 2 * (r + 10), height: 2 * (r + 10)))
-        ctx.setFillColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1))
-        ctx.fillEllipse(in: CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r))
-    }
 
     return ctx.makeImage()
 }
