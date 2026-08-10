@@ -42,9 +42,10 @@ nav:
       - Choosing an analysis: guide/choosing-an-analysis.md
       - Multi-panel figures: guide/multi-panel-figures.md
       - Exporting and provenance: guide/exporting-and-provenance.md
-  - Project spec: project-spec.md
   - Research:
       - Market research: research/market-research.md
       - Prism analysis templates: research/prism-analysis-templates.md
   - Product:
       - MVP and roadmap: product/mvp-roadmap.md
+  - Engineering:
+      - Project spec: project-spec.md
