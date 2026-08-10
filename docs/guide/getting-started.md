@@ -26,8 +26,7 @@ Four ways, whichever suits you:
   you have selected.
 
 Tick **Header row** if your first row holds column names rather than
-measurements. Those names become the group labels on your figure, so they are
-worth getting right.
+measurements. Those names become the group labels on your figure.
 
 ## 2. Pick an analysis
 
@@ -39,25 +38,24 @@ Analyses fall into two families, and switching between them changes how your
 columns are read. [Choosing an analysis](./choosing-an-analysis.md) covers which
 test suits which design.
 
-## 3. Read the result, not just the number
+## 3. Read the result
 
-The right pane gives you more than a p-value:
+The right pane gives you:
 
 - **The value** — the statistic, its degrees of freedom, and the p-value.
-- **The formula** — exactly what was computed.
-- **Assumptions** — what the test relies on. Check these before you report it.
+- **The formula** — what was computed.
+- **Assumptions** — what the test relies on.
 - **Warnings** — where your data strains those assumptions.
 - **Excluded cells** — how many blank or non-numeric cells were left out.
 
-Every number is selectable, so you can copy a value straight into a manuscript.
+Every number is selectable, so you can copy it straight into a manuscript.
 
 ## 4. Shape the figure
 
 Depending on the analysis you will see some of:
 
 - **Plot** — draw grouped data as bars, a box plot, or a violin.
-- **Error bars** — SD, SEM, or a 95% confidence interval. These say very
-  different things; pick deliberately and state which you used.
+- **Error bars** — SD, SEM, or a 95% confidence interval. State which you used.
 - **Significance** — draw brackets with stars over the compared groups.
 - **Graph / Residuals** — for regression and dose-response, switch between the
   fit and its residuals.

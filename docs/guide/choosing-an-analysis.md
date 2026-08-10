@@ -51,14 +51,13 @@ under the picker always states the current expectation.
 
 ### Notes on the ones people get wrong
 
-**Welch is the default, and usually right.** It does not assume the two groups
-have equal variances. Only choose Student's if you have a positive reason to
-assume equal variance.
+**Welch is the default.** It does not assume the two groups have equal
+variances. Choose Student's only if you have a reason to assume they do.
 
 **Paired means paired by row.** For a paired t test or Wilcoxon, row 3 of column
 1 and row 3 of column 2 must be the same subject. Pairing removes
-between-subject variation, so it detects real differences an unpaired test would
-miss — but only if the rows genuinely correspond.
+between-subject variation, so it detects differences an unpaired test would
+miss — but only if the rows correspond.
 
 **Run ANOVA before post-hoc.** ANOVA answers "do these groups differ at all?".
 Post-hoc answers "which ones?", with Bonferroni and Holm corrections for the
@@ -67,8 +66,7 @@ inflates your false-positive rate.
 
 **Correlation is not regression.** Correlation measures how tightly two
 variables move together, with neither treated as the cause. Regression fits a
-line to predict y from x. If it matters which variable is which, you want
-regression.
+line to predict y from x. If the direction matters, use regression.
 
 ## Read the provenance before you report
 
