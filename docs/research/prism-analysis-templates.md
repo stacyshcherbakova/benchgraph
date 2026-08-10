@@ -1,137 +1,112 @@
-# Prism Analysis Templates (Reference)
+# Prism Feature Comparison (Reference)
 
-Source check date: 2026-06-07.
+Source check date: 2026-06-07. BenchGraph column checked against the build on
+2026-08-10.
 
-Internal reference only. This page catalogs the analyses GraphPad Prism exposes,
-so we can scope which ones we need and in what order. It is research, not
+Internal reference only. This page lists what GraphPad Prism does and whether
+BenchGraph does it, so we can see the gap at a glance. It is research, not
 marketing copy and not a compatibility claim.
 
-In Prism, the available analyses depend on the **data table type**. The same
-"Analyze" dialog filters its options based on whether the active table is XY,
-Column, Grouped, Contingency, Survival, Parts of whole, Multiple variables, or
-Nested. The sections below follow that structure.
+**BenchGraph** means reachable by a user in the app or the CLI. A capability
+that exists in the engine but is not exposed is marked No, with a note.
 
-For how this maps to our own scope, see the
-[MVP and roadmap](../product/mvp-roadmap.md). The MVP deliberately ships only a
-small validated subset of the list below.
+| Area | Capability | Prism | BenchGraph |
+| --- | --- | --- | --- |
+| Tables | Column table (one group per column) | Yes | Yes |
+| Tables | XY table (x paired with y) | Yes | Yes |
+| Tables | Grouped table (rows × column groups, replicates) | Yes | No — parsed, not a first-class template |
+| Tables | Contingency table | Yes | No |
+| Tables | Survival table | Yes | No |
+| Tables | Parts-of-whole table | Yes | No |
+| Tables | Multiple-variables table | Yes | No |
+| Tables | Nested table (subcolumns within groups) | Yes | No |
+| Descriptive | Descriptive statistics, CI of the mean | Yes | Yes |
+| Descriptive | Frequency distribution / histogram | Yes | No |
+| Descriptive | Row statistics (per-row mean/SD/SEM) | Yes | No |
+| Two groups | Unpaired t test (Student) | Yes | Yes |
+| Two groups | Unpaired t test (Welch) | Yes | Yes |
+| Two groups | Paired t test | Yes | Yes |
+| Two groups | One-sample t test | Yes | No — in the engine, not exposed |
+| Two groups | Mann-Whitney U | Yes | Yes |
+| Two groups | Wilcoxon matched-pairs | Yes | Yes |
+| Many groups | One-way ANOVA (ordinary) | Yes | Yes |
+| Many groups | Repeated-measures one-way ANOVA | Yes | No |
+| Many groups | Brown-Forsythe / Welch ANOVA | Yes | No |
+| Many groups | Post-hoc: Bonferroni, Holm | Yes | Yes |
+| Many groups | Post-hoc: Tukey, Dunnett, Sidak | Yes | No |
+| Many groups | Kruskal-Wallis, Friedman | Yes | No |
+| Many groups | Two-way ANOVA | Yes | No |
+| Many groups | Three-way ANOVA | Yes | No |
+| Many groups | Mixed-effects model (REML) | Yes | No |
+| Many groups | Multiple t tests, one per row | Yes | No |
+| Many groups | Nested t test / nested one-way ANOVA | Yes | No |
+| Assumptions | D'Agostino-Pearson normality test | Yes | Yes |
+| Assumptions | Shapiro-Wilk, Anderson-Darling, Kolmogorov-Smirnov | Yes | No |
+| Assumptions | Outlier identification (Grubbs, ROUT) | Yes | No |
+| Assumptions | Analyse a stack of P values (FDR) | Yes | No |
+| Regression | Simple linear regression | Yes | Yes |
+| Regression | Residual plots | Yes | Yes |
+| Regression | 4PL dose-response fit | Yes | Yes |
+| Regression | Interpolate unknowns off a standard curve | Yes | Yes |
+| Regression | Wider nonlinear model library (binding, kinetics, exponential) | Yes | No — 4PL only |
+| Regression | User-defined equations | Yes | No |
+| Regression | Shared / constrained parameters, weighting, model comparison | Yes | No |
+| Regression | Deming (Model II) regression | Yes | No |
+| Regression | Spline / LOWESS | Yes | No |
+| Regression | Smooth, differentiate, integrate a curve | Yes | No |
+| Regression | Area under the curve | Yes | No |
+| Regression | Multiple linear regression | Yes | No |
+| Regression | Logistic regression | Yes | No |
+| Correlation | Pearson correlation | Yes | Yes |
+| Correlation | Spearman correlation | Yes | Yes |
+| Correlation | Correlation matrix across many variables | Yes | No |
+| Specialised | Chi-square / Fisher's exact, risk and odds | Yes | No |
+| Specialised | Kaplan-Meier survival, log-rank | Yes | No |
+| Specialised | Cox proportional hazards | Yes | No |
+| Specialised | ROC curve | Yes | No |
+| Specialised | Bland-Altman agreement | Yes | No |
+| Specialised | Principal component analysis | Yes | No |
+| Specialised | Fraction of total / observed vs expected | Yes | No |
+| Data prep | Transform X and/or Y | Yes | No |
+| Data prep | Transform concentrations (log/antilog dilutions) | Yes | No |
+| Data prep | Normalize to 0–100% or defined min/max | Yes | No |
+| Data prep | Prune, transpose, remove baseline, column math | Yes | No |
+| Graphs | Scatter / XY with fitted curve | Yes | Yes |
+| Graphs | Bar chart with error bars | Yes | Yes |
+| Graphs | Selectable error bars (SD, SEM, 95% CI) | Yes | Yes |
+| Graphs | Box plot | Yes | Yes |
+| Graphs | Violin plot | Yes | Yes |
+| Graphs | Log axes | Yes | Yes |
+| Graphs | Significance brackets linked to the analysis | Yes | Yes |
+| Graphs | Journal theme presets | Yes | Yes |
+| Graphs | Multi-panel figure layout with A/B/C labels | Yes | Yes |
+| Graphs | Journal-size presets | Yes | No |
+| Import | Paste from Excel / Numbers | Yes | Yes |
+| Import | CSV / TSV import | Yes | Yes |
+| Import | XLSX import | Yes | Yes — single sheet |
+| Export | PDF and SVG (vector) | Yes | Yes |
+| Export | PNG and TIFF (raster) | Yes | Yes |
+| Export | Copy figure as vector to the clipboard | Yes | Yes |
+| Export | XLSX export | Yes | No |
+| Export | Export analysis as R / Python script | No | No — planned for V1 |
+| Workflow | Results recompute when data or options change | Yes | Yes |
+| Workflow | Undo / redo across edits | Yes | Yes |
+| Workflow | Project file holding data, options, and figures | Yes | Yes |
+| Workflow | Open, documented, diffable project format | No — proprietary `.pzf` | Yes — versioned JSON |
+| Workflow | Assumptions, warnings, and excluded cells shown with every result | Partial | Yes |
+| Workflow | Provenance manifest written beside every export | No | Yes |
+| Workflow | Command-line interface | No | Yes |
+| Workflow | Runs natively on macOS | Yes | Yes |
+| Workflow | Runs on Windows | Yes | No |
+| Workflow | Works offline with no account | Partial — subscription activation | Yes |
 
-## How analyses attach to tables
+## Where the gaps sit
 
-| Table type | Typical data shape | Primary analyses |
-| --- | --- | --- |
-| XY | X paired with one or more Y (subcolumns for replicates) | Regression, correlation, curve fit, interpolation, AUC |
-| Column | One group per column, values stacked down | Descriptive stats, t tests, one-way ANOVA, normality, outliers |
-| Grouped | Rows × column groups with replicates | Two-/three-way ANOVA, multiple t tests, mixed-effects |
-| Contingency | Counts in a 2×2 or R×C table | Chi-square, Fisher's exact, risk/odds, diagnostic metrics |
-| Survival | Time + event/censor code per subject | Kaplan-Meier, log-rank, Cox regression |
-| Parts of whole | Single set of values forming a whole | Fraction of total, observed-vs-expected |
-| Multiple variables | One row per subject, one column per variable | Multiple regression, logistic regression, PCA, correlation matrix |
-| Nested | Subcolumns nested within group columns | Nested t test, nested one-way ANOVA |
+Everything BenchGraph answers Yes to is validated against SciPy fixtures; see
+the [MVP and roadmap](../product/mvp-roadmap.md) for what is planned next.
 
-## XY analyses
-
-- **Linear regression** — slope, intercept, confidence bands, runs test.
-- **Nonlinear regression (curve fit)** — built-in model library (dose-response,
-  exponential, binding, enzyme kinetics, etc.) plus user-defined equations;
-  shared/constrained parameters, replicates, weighting, comparison of models.
-- **Interpolate a standard curve** — fit a curve, read unknowns back off it.
-- **Deming (Model II) linear regression** — error in both X and Y.
-- **Spline and LOWESS** — smoothed curve without a model.
-- **Smooth, differentiate, or integrate a curve** — curve preprocessing.
-- **Area under the curve (AUC)** — total/peak area with baseline handling.
-- **Correlation** — Pearson or Spearman for paired X/Y.
-
-## Column analyses
-
-- **Column statistics** — descriptive statistics, CI of the mean, normality and
-  lognormality tests, one-sample t / Wilcoxon test.
-- **t tests** — paired/unpaired, with Welch's correction; nonparametric
-  Mann-Whitney and Wilcoxon matched-pairs.
-- **One-way ANOVA** — ordinary, repeated-measures, or Brown-Forsythe/Welch, with
-  multiple-comparison corrections (Tukey, Dunnett, Sidak, Holm, Bonferroni, etc.);
-  nonparametric Kruskal-Wallis and Friedman.
-- **Identify outliers** — Grubbs' and ROUT methods.
-- **Normality and lognormality tests** — Shapiro-Wilk, D'Agostino-Pearson,
-  Anderson-Darling, Kolmogorov-Smirnov.
-- **Frequency distribution** — histogram bins / cumulative.
-- **ROC curve** — diagnostic sensitivity/specificity.
-- **Bland-Altman** — method-comparison agreement.
-- **Analyze a stack of P values** — multiple-comparison/FDR across a P-value set.
-
-## Grouped analyses
-
-- **Two-way ANOVA** — two factors, with or without repeated measures; multiple
-  comparisons across rows/columns.
-- **Three-way ANOVA** — three factors.
-- **Mixed-effects model (REML)** — repeated measures tolerant of missing values.
-- **Multiple t tests — one per row** — row-wise comparisons with multiplicity
-  correction (e.g., two-stage FDR).
-- **Row statistics** — per-row means/SD/SEM/CI.
-
-## Contingency table analyses
-
-- **Chi-square and Fisher's exact test** — association in 2×2 or R×C tables, with
-  relative risk, odds ratio, sensitivity, specificity, likelihood ratios, and
-  confidence intervals.
-
-## Survival analyses
-
-- **Survival curve (Kaplan-Meier)** — median survival, curves, at-risk handling.
-- **Comparison of survival curves** — log-rank and Gehan-Breslow-Wilcoxon tests,
-  hazard ratio.
-- **Cox proportional hazards regression** — multivariable survival modeling.
-
-## Parts of whole analyses
-
-- **Fraction of total** — express each value as a fraction/percentage of its
-  column, row, or grand total.
-- **Compare observed distribution with expected** — chi-square or binomial test
-  against an expected distribution.
-
-## Multiple variables analyses
-
-- **Correlation matrix** — pairwise correlations across many variables.
-- **Multiple linear regression** — several predictors, one continuous outcome.
-- **Simple and multiple logistic regression** — binary outcome modeling, ROC,
-  classification.
-- **Principal component analysis (PCA)** — dimensionality reduction.
-- **Select and transform / extract and rearrange** — subset and reshape variables.
-
-## Nested analyses
-
-- **Nested t test** — two groups with subsamples nested in each.
-- **Nested one-way ANOVA** — several groups with nested subsamples.
-
-## Data preparation analyses
-
-These behave like analyses (they produce a linked results table that recomputes
-when source data changes) but transform data rather than test hypotheses. They are
-available across most table types.
-
-- **Transform** — apply functions to X and/or Y.
-- **Transform concentrations (X)** — log/antilog dilution handling for X.
-- **Normalize** — scale to 0-100% or to defined min/max.
-- **Prune rows** — thin or average rows.
-- **Remove baseline and column math** — subtract/divide against a baseline column.
-- **Transpose X and Y** — swap orientation.
-- **Fraction of total** — also usable as a preprocessing step.
-
-## Mapping to MVP scope
-
-For convenience, the analyses the MVP plans to ship as a validated subset:
-
-| Capability | Prism analysis equivalent | MVP? |
-| --- | --- | --- |
-| Descriptive statistics | Column statistics | Yes |
-| t tests (paired/unpaired) | t tests | Yes |
-| Nonparametric two-group | Mann-Whitney, Wilcoxon | Yes |
-| One-way ANOVA + corrections | One-way ANOVA | Yes |
-| Correlation | Pearson/Spearman correlation | Yes |
-| Linear regression | Linear regression | Yes |
-| Dose-response / standard curve | Nonlinear regression (4PL), Interpolate | Yes |
-| Normality / residuals | Normality tests | Yes |
-| Two-/three-way ANOVA, mixed-effects | Grouped analyses | V2 |
-| Survival, ROC, contingency | Survival / Contingency analyses | V2 |
-| Logistic / multiple regression, PCA | Multiple variables analyses | Post-MVP |
-
-See [MVP and roadmap](../product/mvp-roadmap.md) for the full staged plan.
+The concentration of No rows is in grouped and specialised analyses — two-way
+ANOVA, survival, contingency, ROC, PCA — and in data preparation, where Prism's
+transform-and-normalise steps have no equivalent. The Yes rows cluster in the
+common wet-lab path: describe, compare two or several groups, fit a curve, draw
+it, export it.

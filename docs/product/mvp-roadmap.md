@@ -30,9 +30,10 @@ Do not clone every GraphPad Prism feature. Build the smallest credible workflow 
 
 As of the current build, a Swift implementation exists: a tested engine
 (`BenchGraphKit`), a `benchgraph` CLI, and a SwiftUI app (`BenchGraph.app`).
-The suite has 120 tests: SciPy-validated stats fixtures plus figure-rendering,
+The suite has 127 tests: SciPy-validated stats fixtures plus figure-rendering,
 multi-panel, manifest, XLSX-import, editable-grid, project-file,
-figure-serialisation, panel-order, interpolation, and help-catalog tests.
+figure-serialisation, panel-order, interpolation, per-column-result, and
+help-catalog tests.
 
 | MVP area | Status |
 | --- | --- |
@@ -139,43 +140,6 @@ The product is credible only if it has:
 - [x] Linked data -> analysis -> graph updates.
 - [x] Clear warnings for invalid assumptions, missing data, unequal group sizes, and ambiguous repeated-measures structure.
 - [x] Undo/redo across table, analysis, and graph edits.
-
-## Core Workflows
-
-### 1. Spreadsheet To Figure
-
-1. New project.
-2. Select table type: column, grouped, or XY.
-3. Paste data from Excel/Numbers.
-4. Pick analysis template.
-5. Review assumptions and results.
-6. Generate linked graph.
-7. Export graph or layout.
-
-### 2. Dose-Response Or Standard Curve
-
-1. Create XY table.
-2. Paste concentration and response values.
-3. Select model: linear, log-linear, 4PL.
-4. Fit curve and inspect residuals.
-5. Interpolate unknowns.
-6. Export graph and result table.
-
-### 3. Group Comparison Figure
-
-1. Create grouped table.
-2. Enter condition, treatment, replicate data.
-3. Choose one-way ANOVA or nonparametric alternative.
-4. Apply multiple-comparison correction.
-5. Place significance annotations automatically.
-6. Adjust final labels and export.
-
-### 4. Multi-Panel Publication Figure
-
-1. Build a graph, then capture it as a panel; repeat for each dataset.
-2. Drag the panel cards to set the A/B/C order, and choose the grid width.
-3. Export PDF/SVG/TIFF at journal-ready size, with an export manifest.
-4. Save the project — the staged panels are stored with it.
 
 ## Version Roadmap
 

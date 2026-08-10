@@ -43,7 +43,7 @@ nav:
       - Multi-panel figures: guide/multi-panel-figures.md
   - Research:
       - Market research: research/market-research.md
-      - Prism analysis templates: research/prism-analysis-templates.md
+      - Prism feature comparison: research/prism-analysis-templates.md
   - Product:
       - MVP and roadmap: product/mvp-roadmap.md
   - Engineering:

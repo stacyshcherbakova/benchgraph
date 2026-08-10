@@ -66,7 +66,7 @@ distributable build requires an Apple Developer Program subscription.
 
 ```bash
 swift build                 # build the library + CLI
-./scripts/test.sh           # run the test suite (120 tests)
+./scripts/test.sh           # run the test suite (127 tests)
 ```
 
 `scripts/test.sh` wraps `swift test` with the framework paths needed when only the
