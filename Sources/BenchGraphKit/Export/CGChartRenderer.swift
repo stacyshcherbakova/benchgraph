@@ -28,7 +28,9 @@ public struct CGChartRenderer {
     public let theme: Theme
     private let margin = (top: 30.0, right: 30.0, bottom: 55.0, left: 70.0)
     /// Vertical spacing between stacked significance brackets, in points.
-    private let bracketStep: CGFloat = 16
+    /// Matches `SVGRenderer.bracketStep` — see the note there. 16 put a
+    /// bracket's label on top of the next level's line.
+    private let bracketStep: CGFloat = 22
     private let primaryColor: CGColor
     private let curveColor: CGColor
     private let axisColor: CGColor

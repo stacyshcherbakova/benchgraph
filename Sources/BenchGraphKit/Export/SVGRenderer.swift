@@ -74,7 +74,13 @@ public struct SVGRenderer {
     public let theme: Theme
     private let margin = (top: 30.0, right: 30.0, bottom: 55.0, left: 70.0)
     /// Vertical spacing between stacked significance brackets, in points.
-    private let bracketStep = 16.0
+    /// Vertical spacing between stacked significance brackets, in points.
+    ///
+    /// Must clear the label drawn above each bracket, which is 13pt type offset
+    /// 3pt above the line — so a level occupies 16pt before any gap. At 16 the
+    /// label of one level landed exactly on the line of the next; 22 leaves ~6pt
+    /// of air.
+    private let bracketStep = 22.0
 
     public init(width: Double = 520, height: Double = 380, theme: Theme = .default) {
         self.width = width
