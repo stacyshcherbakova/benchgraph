@@ -17,7 +17,6 @@ The strongest gap is a modern Mac-native desktop app that keeps Prism's fast tab
 - Wet-lab scientists in biology, pharmacology, neuroscience, immunology, chemistry, and biomedical research.
 - Graduate students, postdocs, staff scientists, and PIs who need credible analyses without writing code.
 - Core facilities that repeatedly generate standard curves, dose-response plots, assay QC plots, grouped comparisons, and publication figures.
-- Small biotech and pharma teams that need local files, auditability, and clean exports, but do not need full enterprise SAS/JMP infrastructure.
 - Mac-heavy labs where Windows-only graphing tools create friction through virtual machines, file transfer, or unsupported workflows.
 
 ## Alternatives
